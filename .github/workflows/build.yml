@@ -1,0 +1,239 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Create Release Notes
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release_meta.outputs.release_tag }}
+      release_version: ${{ steps.release_meta.outputs.release_version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve release version from Cargo.toml
+        id: release_meta
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version\s*=\s*"' Cargo.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')
+          if [ -z "$version" ]; then
+            echo "Could not read version from Cargo.toml"
+            exit 1
+          fi
+
+          tag="v${version}"
+          echo "Cargo.toml version: ${version}"
+          echo "Release tag: ${tag}"
+
+          echo "release_version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release with commit summary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.release_meta.outputs.release_tag }}"
+          repo="${GITHUB_REPOSITORY}"
+
+          gh release view "$tag" --repo "$repo" >/dev/null 2>&1 || \
+            gh release create "$tag" --repo "$repo" --title "$tag" --generate-notes
+
+  windows:
+    name: Windows (binary)
+    runs-on: windows-latest
+    needs: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Create Windows zip artifact
+        shell: pwsh
+        run: |
+          $stageDir = "target/release/windows-package"
+          $zipPath = "target/release/alquife-windows-x86_64.zip"
+
+          if (Test-Path $stageDir) {
+            Remove-Item $stageDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $stageDir | Out-Null
+
+          Copy-Item "target/release/alquife.exe" "$stageDir/alquife.exe"
+          Copy-Item "packaging/windows/install.bat" "$stageDir/install.bat"
+          Copy-Item "packaging/windows/uninstall.bat" "$stageDir/uninstall.bat"
+          Copy-Item "packaging/windows/INSTALL_GUIDE.md" "$stageDir/INSTALL_GUIDE.md"
+          Copy-Item "icons/alquife.png" "$stageDir/alquife.png"
+
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path "$stageDir/*" -DestinationPath $zipPath
+
+      - name: Upload Windows zip to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ needs.release.outputs.release_tag }}"
+          $repo = "${{ github.repository }}"
+
+          gh release upload $tag "target/release/alquife-windows-x86_64.zip" --repo $repo --clobber
+
+  linux:
+    name: Linux (binary + deb)
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libssl-dev \
+            libdbus-1-dev \
+            libasound2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Build deb package
+        run: cargo deb --no-build --no-strip
+
+      - name: Upload Linux assets to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ needs.release.outputs.release_tag }}"
+          repo="${GITHUB_REPOSITORY}"
+
+          gh release upload "$tag" \
+            "target/release/alquife#alquife-linux-x86_64" \
+            target/debian/*.deb \
+            --repo "$repo" \
+            --clobber
+
+  bump-master-version:
+    name: Bump Cargo.toml on master
+    runs-on: ubuntu-latest
+    needs:
+      - release
+      - windows
+      - linux
+
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - name: Bump to next patch version
+        shell: bash
+        run: |
+          current="${{ needs.release.outputs.release_version }}"
+
+          if ! [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version in Cargo.toml must be semver like 1.2.3"
+            exit 1
+          fi
+
+          IFS='.' read -r major minor patch <<< "$current"
+          next_patch=$((patch + 1))
+          next_version="${major}.${minor}.${next_patch}"
+
+          echo "Current version: ${current}"
+          echo "Next version: ${next_version}"
+
+          sed -E -i "0,/^version\s*=\s*\"[^\"]+\"/s//version = \"${next_version}\"/" Cargo.toml
+          perl -0777 -i -pe 's/(\[\[package\]\]\nname = "alquife"\nversion = )"[^"]+"/$1"'"${next_version}"'"/' Cargo.lock
+
+          if git diff --quiet Cargo.toml Cargo.lock; then
+            echo "No changes in Cargo.toml/Cargo.lock"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to ${next_version} [skip ci]"
+          git push origin HEAD:master
+
+  sync-development-version:
+    name: Sync version bump to development
+    runs-on: ubuntu-latest
+    needs:
+      - release
+      - bump-master-version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout development
+        uses: actions/checkout@v6
+        with:
+          ref: development
+
+      - name: Apply same next patch version on development
+        shell: bash
+        run: |
+          current="${{ needs.release.outputs.release_version }}"
+
+          if ! [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version in Cargo.toml must be semver like 1.2.3"
+            exit 1
+          fi
+
+          IFS='.' read -r major minor patch <<< "$current"
+          next_patch=$((patch + 1))
+          next_version="${major}.${minor}.${next_patch}"
+
+          echo "Current release version: ${current}"
+          echo "Syncing development to: ${next_version}"
+
+          sed -E -i "0,/^version\s*=\s*\"[^\"]+\"/s//version = \"${next_version}\"/" Cargo.toml
+          perl -0777 -i -pe 's/(\[\[package\]\]\nname = "alquife"\nversion = )"[^"]+"/$1"'"${next_version}"'"/' Cargo.lock
+
+          if git diff --quiet Cargo.toml Cargo.lock; then
+            echo "Development already on version ${next_version}"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: sync version to ${next_version} from master [skip ci]"
+          git push origin HEAD:development
