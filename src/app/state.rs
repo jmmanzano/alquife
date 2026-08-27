@@ -206,6 +206,35 @@ pub struct RadioState {
     pub stations: Vec<InternetRadioStation>,
     pub selected: Option<usize>,
     pub scroll_offset: usize,
+    
+    // Radio management mode
+    pub edit_mode: RadioEditMode,
+    pub focused_field: RadioInputField,
+    pub editing_radio: Option<InternetRadioStation>,
+    
+    // Per-field input storage
+    pub radio_name: String,
+    pub radio_stream_url: String,
+    pub radio_home_page_url: String,
+}
+
+/// Radio editing mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RadioEditMode {
+    #[default]
+    Browse,
+    AddNew,
+    Edit,
+    Delete,
+}
+
+/// Which field is focused in edit mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RadioInputField {
+    #[default]
+    Name,
+    StreamUrl,
+    HomePageUrl,
 }
 
 /// Audio output mode for the device selector page
@@ -303,7 +332,7 @@ pub struct ServerState {
 /// Settings page state
 #[derive(Debug, Clone)]
 pub struct SettingsState {
-    /// Currently focused field (0=Theme, 1=AudioBackend, 2=NonStopMode, 3=Equalizer, 4=Notifications)
+    /// Currently focused field (0=Theme, 1=AudioBackend, 2=NonStopMode, 3=Equalizer, 4=Notifications, 5=AutoUpdate)
     pub selected_field: usize,
     /// Available themes (Default + loaded from files)
     pub themes: Vec<ThemeData>,
@@ -329,6 +358,8 @@ pub struct SettingsState {
     pub eq_rename_buffer: String,
     /// Desktop notifications when a song changes
     pub notifications_enabled: bool,
+    /// Automatic update checks enabled
+    pub auto_update_enabled: bool,
 }
 
 impl Default for SettingsState {
@@ -350,6 +381,7 @@ impl Default for SettingsState {
             eq_renaming: false,
             eq_rename_buffer: String::new(),
             notifications_enabled: false,
+            auto_update_enabled: true,
         }
     }
 }

@@ -14,11 +14,12 @@ mod error;
 mod mpris;
 mod subsonic;
 mod ui;
+mod updater;
 
 use clap::Parser;
 use std::fs::{self, File};
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::app::App;
@@ -109,6 +110,15 @@ async fn main() -> anyhow::Result<()> {
             })
         }
     };
+
+    // Check for updates (async, non-blocking - won't delay app startup)
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let auto_update_enabled = config.auto_update_enabled;
+    tokio::spawn(async move {
+        if let Err(e) = updater::check_for_update(&version, auto_update_enabled).await {
+            warn!("Update check failed: {}", e);
+        }
+    });
 
     info!(
         "Server: {}",

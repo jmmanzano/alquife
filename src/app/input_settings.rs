@@ -22,7 +22,7 @@ impl App {
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if field < 4 {
+                    if field < 5 {
                         state.settings_state.selected_field = field + 1;
                     }
                 }
@@ -62,6 +62,13 @@ impl App {
                         state.notify(format!("Notifications: {}", status));
                         config_changed = true;
                     }
+                    5 => {
+                        state.settings_state.auto_update_enabled = !state.settings_state.auto_update_enabled;
+                        state.config.auto_update_enabled = state.settings_state.auto_update_enabled;
+                        let status = if state.settings_state.auto_update_enabled { "On" } else { "Off" };
+                        state.notify(format!("Auto-update: {}", status));
+                        config_changed = true;
+                    }
                     _ => {}
                 },
                 // Right / Enter / Space
@@ -99,6 +106,13 @@ impl App {
                             state.config.notifications_enabled = state.settings_state.notifications_enabled;
                             let status = if state.settings_state.notifications_enabled { "On" } else { "Off" };
                             state.notify(format!("Notifications: {}", status));
+                            config_changed = true;
+                        }
+                        5 => {
+                            state.settings_state.auto_update_enabled = !state.settings_state.auto_update_enabled;
+                            state.config.auto_update_enabled = state.settings_state.auto_update_enabled;
+                            let status = if state.settings_state.auto_update_enabled { "On" } else { "Off" };
+                            state.notify(format!("Auto-update: {}", status));
                             config_changed = true;
                         }
                         _ => {}

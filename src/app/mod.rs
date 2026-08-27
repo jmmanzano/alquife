@@ -15,6 +15,7 @@ mod mouse;
 mod mouse_artists;
 mod mouse_playlists;
 mod playback;
+mod radio_manager;
 pub mod state;
 
 use std::io;
