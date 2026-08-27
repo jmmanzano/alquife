@@ -344,6 +344,164 @@ impl SubsonicClient {
         Ok(url.to_string())
     }
 
+    /// Create a new internet radio station
+    ///
+    /// # Arguments
+    /// * `name` - The name of the radio station
+    /// * `stream_url` - The stream URL (e.g., http://stream.example.com/radio)
+    /// * `home_page_url` - Optional home page URL
+    pub async fn create_internet_radio_station(
+        &self,
+        name: &str,
+        stream_url: &str,
+        home_page_url: Option<&str>,
+    ) -> Result<InternetRadioStation, SubsonicError> {
+        tracing::info!("Creating radio station: name='{}', stream_url='{}', home_page_url={:?}", 
+            name, stream_url, home_page_url);
+        
+        let mut url = self.base_url.join("rest/createInternetRadioStation")?;
+        let (salt, token) = generate_auth_params(&self.password);
+
+        url.query_pairs_mut()
+            .append_pair("u", &self.username)
+            .append_pair("t", &token)
+            .append_pair("s", &salt)
+            .append_pair("v", API_VERSION)
+            .append_pair("c", CLIENT_NAME)
+            .append_pair("f", "json")
+            .append_pair("name", name)
+            .append_pair("streamUrl", stream_url);
+
+        if let Some(url_str) = home_page_url {
+            tracing::debug!("Adding homePageUrl parameter: '{}'", url_str);
+            url.query_pairs_mut().append_pair("homePageUrl", url_str);
+        } else {
+            tracing::debug!("No homePageUrl provided");
+        }
+
+        tracing::debug!("API call URL: {}", url.as_str());
+
+        let response: InternetRadioStationResponse = self.http.get(url)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create radio station: {}", e);
+                SubsonicError::Http(e)
+            })?
+            .json()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to parse radio station response: {}", e);
+                SubsonicError::Http(e)
+            })?;
+
+        tracing::info!("Created radio station response: id='{}', name='{}', home_page_url={:?}", 
+            response.internet_radio_station.id, 
+            response.internet_radio_station.name,
+            response.internet_radio_station.home_page_url);
+        
+        Ok(response.internet_radio_station)
+    }
+
+    /// Update an existing internet radio station
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the radio station to update
+    /// * `name` - The new name of the radio station
+    /// * `stream_url` - The new stream URL
+    /// * `home_page_url` - Optional new home page URL
+    pub async fn update_internet_radio_station(
+        &self,
+        id: &str,
+        name: &str,
+        stream_url: &str,
+        home_page_url: Option<&str>,
+    ) -> Result<InternetRadioStation, SubsonicError> {
+        tracing::info!("Updating radio station: id='{}', name='{}', stream_url='{}', home_page_url={:?}", 
+            id, name, stream_url, home_page_url);
+        
+        let mut url = self.base_url.join("rest/updateInternetRadioStation")?;
+        let (salt, token) = generate_auth_params(&self.password);
+
+        url.query_pairs_mut()
+            .append_pair("u", &self.username)
+            .append_pair("t", &token)
+            .append_pair("s", &salt)
+            .append_pair("v", API_VERSION)
+            .append_pair("c", CLIENT_NAME)
+            .append_pair("f", "json")
+            .append_pair("id", id)
+            .append_pair("name", name)
+            .append_pair("streamUrl", stream_url);
+
+        if let Some(url_str) = home_page_url {
+            tracing::debug!("Adding homePageUrl parameter: '{}'", url_str);
+            url.query_pairs_mut().append_pair("homePageUrl", url_str);
+        } else {
+            tracing::debug!("No homePageUrl provided");
+        }
+
+        tracing::debug!("API call URL: {}", url.as_str());
+
+        let response: InternetRadioStationResponse = self.http.get(url)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update radio station: {}", e);
+                SubsonicError::Http(e)
+            })?
+            .json()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to parse radio station response: {}", e);
+                SubsonicError::Http(e)
+            })?;
+
+        tracing::info!("Updated radio station response: id='{}', name='{}', home_page_url={:?}", 
+            response.internet_radio_station.id, 
+            response.internet_radio_station.name,
+            response.internet_radio_station.home_page_url);
+        
+        Ok(response.internet_radio_station)
+    }
+
+    /// Delete an internet radio station
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the radio station to delete
+    pub async fn delete_internet_radio_station(
+        &self,
+        id: &str,
+    ) -> Result<(), SubsonicError> {
+        tracing::info!("Deleting radio station: id='{}'", id);
+        
+        let mut url = self.base_url.join("rest/deleteInternetRadioStation")?;
+        let (salt, token) = generate_auth_params(&self.password);
+
+        url.query_pairs_mut()
+            .append_pair("u", &self.username)
+            .append_pair("t", &token)
+            .append_pair("s", &salt)
+            .append_pair("v", API_VERSION)
+            .append_pair("c", CLIENT_NAME)
+            .append_pair("f", "json")
+            .append_pair("id", id);
+
+        tracing::debug!("API call URL: {}", url.as_str());
+
+        self.http.get(url)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to delete radio station: {}", e);
+                SubsonicError::Http(e)
+            })?;
+
+        tracing::info!("Deleted internet radio station: {}", id);
+        Ok(())
+    }
+
+
 }
 
 #[cfg(test)]

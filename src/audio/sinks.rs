@@ -196,6 +196,7 @@ fn list_sinks_windows() -> Vec<AudioSink> {
         .map(|devices| {
             devices
                 .filter_map(|d| {
+                    #[allow(deprecated)]
                     let n = d.name().ok()?;
                     let is_bt = n.to_lowercase().contains("bluetooth")
                         || n.to_lowercase().contains("a2dp");

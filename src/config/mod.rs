@@ -43,11 +43,18 @@ pub struct Config {
     /// Audio output device name (e.g., "Echo Dot (Stereo)")
     #[serde(rename = "AudioOutputDevice", default)]
     pub audio_output_device: Option<String>,
+    /// Enable automatic update checks
+    #[serde(rename = "AutoUpdateEnabled", default = "Config::default_auto_update")]
+    pub auto_update_enabled: bool,
 }
 
 impl Config {
     fn default_equalizer_preset() -> String {
         "Flat".to_string()
+    }
+
+    fn default_auto_update() -> bool {
+        true
     }
 
     /// Create a new empty config

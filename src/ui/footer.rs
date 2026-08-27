@@ -83,8 +83,12 @@ impl<'a> Footer<'a> {
             }
             Page::Radio => {
                 binds.extend([
-                    ("Enter", "Play"),
+                    ("a", "Add"),
+                    ("e", "Edit"),
+                    ("d", "Delete"),
+                    ("r", "Refresh"),
                     ("s", "Stop"),
+                    ("Enter", "Play"),
                 ]);
             }
             Page::Server => {

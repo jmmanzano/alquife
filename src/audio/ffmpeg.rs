@@ -228,10 +228,10 @@ impl FfmpegController {
                 .ok()
                 .and_then(|mut devices| {
                     devices.find(|d| {
-                        d.name()
-                            .ok()
-                            .as_deref()
-                            .map(|n| n.contains(device_name))
+                        #[allow(deprecated)]
+                        let n = d.name().ok();
+                        n.as_deref()
+                            .map(|name| name.contains(device_name))
                             .unwrap_or(false)
                     })
                 }) {
@@ -250,6 +250,7 @@ impl FfmpegController {
         };
 
         // Check if this device is Bluetooth-based to adjust buffer size
+        #[allow(deprecated)]
         let device_name = device.name().unwrap_or_else(|_| "Unknown".to_string());
         let is_bluetooth = device_name.to_lowercase().contains("bluetooth") 
             || device_name.to_lowercase().contains("echo")

@@ -66,17 +66,19 @@ impl App {
             _ => {}
         }
 
-        // Bypass global keybindings when typing in server text fields or filtering artists
+        // Bypass global keybindings when typing in text input fields
         let is_server_text_field =
             state.page == Page::Server && state.server_state.selected_field <= 2;
         let is_filtering = state.page == Page::Artists && state.artists.filter_active;
+        let is_radio_edit_mode = state.page == Page::Radio && state.radio.edit_mode != crate::app::state::RadioEditMode::Browse;
 
-        if is_server_text_field || is_filtering {
+        if is_server_text_field || is_filtering || is_radio_edit_mode {
             let page = state.page;
             drop(state);
             return match page {
                 Page::Server => self.handle_server_key(key).await,
                 Page::Artists => self.handle_artists_key(key).await,
+                Page::Radio => self.handle_radio_key(key).await,
                 _ => Ok(()),
             };
         }
@@ -143,7 +145,10 @@ impl App {
             Page::Artists => self.handle_artists_key(key).await,
             Page::Queue => self.handle_queue_key(key).await,
             Page::Playlists => self.handle_playlists_key(key).await,
-            Page::Radio => self.handle_radio_key(key).await,
+            Page::Radio => {
+                tracing::debug!("Routing to handle_radio_key: {:?}", key);
+                self.handle_radio_key(key).await
+            },
             Page::Server => self.handle_server_key(key).await,
             Page::Settings => self.handle_settings_key(key).await,
             Page::Equalizer => self.handle_equalizer_key(key).await,

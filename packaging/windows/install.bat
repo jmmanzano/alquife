@@ -83,7 +83,34 @@ if errorlevel 1 exit /b 1
 
 where ffmpeg >nul 2>&1
 if errorlevel 1 (
-  echo ffmpeg not found in PATH. Downloading runtime dependencies...
+  echo ffmpeg not found in PATH. Attempting to install runtime dependencies...
+  
+  REM Try winget first
+  where winget >nul 2>&1
+  if errorlevel 0 (
+    echo Attempting to install ffmpeg via Windows Package Manager...
+    winget install --id=GyanD.ffmpeg -e --accept-source-agreements --accept-package-agreements >nul 2>&1
+    if errorlevel 0 (
+      echo ffmpeg installed successfully via winget.
+      where ffmpeg >nul 2>&1
+      if errorlevel 0 goto ffmpeg_installed
+    )
+  )
+
+  REM Try chocolatey as fallback
+  where choco >nul 2>&1
+  if errorlevel 0 (
+    echo Attempting to install ffmpeg via Chocolatey...
+    choco install ffmpeg -y >nul 2>&1
+    if errorlevel 0 (
+      echo ffmpeg installed successfully via Chocolatey.
+      where ffmpeg >nul 2>&1
+      if errorlevel 0 goto ffmpeg_installed
+    )
+  )
+
+  REM Manual download as final fallback
+  echo Package manager not available or installation failed. Downloading ffmpeg manually...
 
   if exist "%FFMPEG_TMP%" rmdir /S /Q "%FFMPEG_TMP%"
   mkdir "%FFMPEG_TMP%"
@@ -131,6 +158,12 @@ if errorlevel 1 (
   if exist "%FFMPEG_TMP%" rmdir /S /Q "%FFMPEG_TMP%"
 
   echo ffmpeg installed in "%FFMPEG_BIN%"
+  goto ffmpeg_done
+
+:ffmpeg_installed
+  echo ffmpeg installation completed via package manager.
+
+:ffmpeg_done
 ) else (
   echo ffmpeg already available in PATH.
 )
@@ -161,9 +194,9 @@ set "PATH_ENTRY=%~1"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$target = [System.IO.Path]::GetFullPath($env:PATH_ENTRY);" ^
   "$current = [Environment]::GetEnvironmentVariable('Path', 'User');" ^
-  "if ([string]::IsNullOrWhiteSpace($current)) { $parts = @() } else { $parts = $current -split ';' | Where-Object { $_ -and $_.Trim() -ne '' } }" ^
-  "$exists = $false; foreach ($p in $parts) { if ($p.TrimEnd('\\') -ieq $target.TrimEnd('\\')) { $exists = $true; break } }" ^
-  "if (-not $exists) { $parts += $target; [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User'); Write-Host ('Added to user PATH: ' + $target) } else { Write-Host ('Already in user PATH: ' + $target) }"
+  "$parts = @(); if (-not [string]::IsNullOrWhiteSpace($current)) { $parts = @($current -split ';' | Where-Object { $_ -and $_.Trim() -ne '' }) };" ^
+  "$exists = $false; foreach ($p in $parts) { try { $normalizedP = [System.IO.Path]::GetFullPath($p.Trim()); if ($normalizedP -ieq $target) { $exists = $true; break } } catch { } };" ^
+  "if (-not $exists) { $parts += $target; $newPath = $parts -join ';'; [Environment]::SetEnvironmentVariable('Path', $newPath, 'User'); Write-Host ('Added to user PATH: ' + $target) } else { Write-Host ('Already in user PATH: ' + $target) }"
 if errorlevel 1 (
   echo Error: failed to update user PATH for "%PATH_ENTRY%".
   exit /b 1
