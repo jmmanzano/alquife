@@ -36,16 +36,17 @@ impl App {
             Error::Subsonic(crate::error::SubsonicError::NotConfigured)
         })?;
 
-        let station = client
+        client
             .create_internet_radio_station(name, stream_url, home_page_url)
             .await?;
 
-        // Add to state
+        // Refresh the station list to get the updated data
+        let stations = client.get_internet_radio_stations().await?;
         let mut state = self.state.write().await;
-        state.radio.stations.push(station.clone());
-        state.radio.selected = Some(state.radio.stations.len() - 1);
+        state.radio.stations = stations;
+        state.radio.selected = Some(state.radio.stations.len().saturating_sub(1));
         
-        info!("Created radio station: {}", station.name);
+        info!("Created radio station: {}", name);
         Ok(())
     }
 
@@ -81,17 +82,25 @@ impl App {
             Error::Subsonic(crate::error::SubsonicError::NotConfigured)
         })?;
 
-        let updated_station = client
+        client
             .update_internet_radio_station(id, name, stream_url, home_page_url)
             .await?;
 
-        // Update in state
+        // Refresh the station list to get the updated data
+        let stations = client.get_internet_radio_stations().await?;
+        
         let mut state = self.state.write().await;
+        let current_selection = state.radio.stations.iter().position(|s| s.id == id);
+        state.radio.stations = stations;
+        
+        // Preserve selection if the updated station still exists
         if let Some(pos) = state.radio.stations.iter().position(|s| s.id == id) {
-            state.radio.stations[pos] = updated_station.clone();
+            state.radio.selected = Some(pos);
+        } else if let Some(sel) = current_selection {
+            state.radio.selected = Some(sel.min(state.radio.stations.len().saturating_sub(1)));
         }
         
-        info!("Updated radio station: {}", updated_station.name);
+        info!("Updated radio station: {}", name);
         Ok(())
     }
 

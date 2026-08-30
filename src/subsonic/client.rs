@@ -355,7 +355,7 @@ impl SubsonicClient {
         name: &str,
         stream_url: &str,
         home_page_url: Option<&str>,
-    ) -> Result<InternetRadioStation, SubsonicError> {
+    ) -> Result<(), SubsonicError> {
         tracing::info!("Creating radio station: name='{}', stream_url='{}', home_page_url={:?}", 
             name, stream_url, home_page_url);
         
@@ -372,16 +372,14 @@ impl SubsonicClient {
             .append_pair("name", name)
             .append_pair("streamUrl", stream_url);
 
-        if let Some(url_str) = home_page_url {
-            tracing::debug!("Adding homePageUrl parameter: '{}'", url_str);
-            url.query_pairs_mut().append_pair("homePageUrl", url_str);
-        } else {
-            tracing::debug!("No homePageUrl provided");
-        }
+        // Always send homepageUrl parameter, even if empty, to allow clearing the field
+        let home_page_value = home_page_url.unwrap_or("");
+        tracing::debug!("Adding homepageUrl parameter: '{}'", home_page_value);
+        url.query_pairs_mut().append_pair("homepageUrl", home_page_value);
 
         tracing::debug!("API call URL: {}", url.as_str());
 
-        let response: InternetRadioStationResponse = self.http.get(url)
+        let response: SubsonicResponse<PingData> = self.http.post(url)
             .send()
             .await
             .map_err(|e| {
@@ -395,12 +393,22 @@ impl SubsonicClient {
                 SubsonicError::Http(e)
             })?;
 
-        tracing::info!("Created radio station response: id='{}', name='{}', home_page_url={:?}", 
-            response.internet_radio_station.id, 
-            response.internet_radio_station.name,
-            response.internet_radio_station.home_page_url);
+        if response.subsonic_response.status != "ok" {
+            if let Some(error) = response.subsonic_response.error {
+                return Err(SubsonicError::Api { 
+                    code: error.code, 
+                    message: error.message 
+                });
+            }
+            return Err(SubsonicError::Api { 
+                code: -1, 
+                message: "Unknown error".to_string() 
+            });
+        }
+
+        tracing::info!("Created radio station successfully: name='{}'", name);
         
-        Ok(response.internet_radio_station)
+        Ok(())
     }
 
     /// Update an existing internet radio station
@@ -416,7 +424,7 @@ impl SubsonicClient {
         name: &str,
         stream_url: &str,
         home_page_url: Option<&str>,
-    ) -> Result<InternetRadioStation, SubsonicError> {
+    ) -> Result<(), SubsonicError> {
         tracing::info!("Updating radio station: id='{}', name='{}', stream_url='{}', home_page_url={:?}", 
             id, name, stream_url, home_page_url);
         
@@ -434,16 +442,14 @@ impl SubsonicClient {
             .append_pair("name", name)
             .append_pair("streamUrl", stream_url);
 
-        if let Some(url_str) = home_page_url {
-            tracing::debug!("Adding homePageUrl parameter: '{}'", url_str);
-            url.query_pairs_mut().append_pair("homePageUrl", url_str);
-        } else {
-            tracing::debug!("No homePageUrl provided");
-        }
+        // Always send homepageUrl parameter, even if empty, to allow clearing the field
+        let home_page_value = home_page_url.unwrap_or("");
+        tracing::debug!("Adding homepageUrl parameter: '{}'", home_page_value);
+        url.query_pairs_mut().append_pair("homepageUrl", home_page_value);
 
         tracing::debug!("API call URL: {}", url.as_str());
 
-        let response: InternetRadioStationResponse = self.http.get(url)
+        let response: SubsonicResponse<PingData> = self.http.post(url)
             .send()
             .await
             .map_err(|e| {
@@ -457,12 +463,22 @@ impl SubsonicClient {
                 SubsonicError::Http(e)
             })?;
 
-        tracing::info!("Updated radio station response: id='{}', name='{}', home_page_url={:?}", 
-            response.internet_radio_station.id, 
-            response.internet_radio_station.name,
-            response.internet_radio_station.home_page_url);
+        if response.subsonic_response.status != "ok" {
+            if let Some(error) = response.subsonic_response.error {
+                return Err(SubsonicError::Api { 
+                    code: error.code, 
+                    message: error.message 
+                });
+            }
+            return Err(SubsonicError::Api { 
+                code: -1, 
+                message: "Unknown error".to_string() 
+            });
+        }
+
+        tracing::info!("Updated radio station successfully: id='{}', name='{}'", id, name);
         
-        Ok(response.internet_radio_station)
+        Ok(())
     }
 
     /// Delete an internet radio station
@@ -489,7 +505,7 @@ impl SubsonicClient {
 
         tracing::debug!("API call URL: {}", url.as_str());
 
-        self.http.get(url)
+        self.http.post(url)
             .send()
             .await
             .map_err(|e| {
