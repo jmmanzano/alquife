@@ -232,34 +232,6 @@ pub struct InternetRadioStation {
     pub home_page_url: Option<String>,
 }
 
-/// Request for creating a new internet radio station
-#[derive(Debug, Clone, Serialize)]
-pub struct CreateInternetRadioRequest {
-    pub name: String,
-    #[serde(rename = "streamUrl")]
-    pub stream_url: String,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "homePageUrl")]
-    pub home_page_url: Option<String>,
-}
-
-/// Request for updating an internet radio station
-#[derive(Debug, Clone, Serialize)]
-pub struct UpdateInternetRadioRequest {
-    pub id: String,
-    pub name: String,
-    #[serde(rename = "streamUrl")]
-    pub stream_url: String,
-    #[serde(skip_serializing_if = "Option::is_none", rename = "homePageUrl")]
-    pub home_page_url: Option<String>,
-}
-
-/// Response for single internet radio station operation
-#[derive(Debug, Deserialize)]
-pub struct InternetRadioStationResponse {
-    #[serde(rename = "internetRadioStation")]
-    pub internet_radio_station: InternetRadioStation,
-}
-
 /// Internet Radio Stations response
 #[derive(Debug, Deserialize)]
 pub struct InternetRadioStationsData {

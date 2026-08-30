@@ -14,9 +14,12 @@ use crate::ui::theme::ThemeColors;
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let colors = *state.settings_state.theme_colors();
 
+    let version = env!("CARGO_PKG_VERSION");
+    let title = format!(" Settings - v{} ", version);
+    
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Settings ")
+        .title(title)
         .border_style(Style::default().fg(colors.border_focused));
 
     let inner = block.inner(area);
