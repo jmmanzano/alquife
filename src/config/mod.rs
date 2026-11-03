@@ -10,7 +10,7 @@ use tracing::{debug, info, warn};
 use crate::error::ConfigError;
 
 /// Main application configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Subsonic server base URL
     #[serde(rename = "BaseURL", default)]
@@ -46,6 +46,21 @@ pub struct Config {
     /// Enable automatic update checks
     #[serde(rename = "AutoUpdateEnabled", default = "Config::default_auto_update")]
     pub auto_update_enabled: bool,
+    /// Show album artwork on the queue page.
+    #[serde(rename = "ShowCoverArt", default = "Config::default_show_cover_art")]
+    pub show_cover_art: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            base_url: String::new(), username: String::new(), password: String::new(),
+            theme: String::new(), non_stop_mode: false, audio_backend: String::new(),
+            equalizer_enabled: false, equalizer_preset: String::new(),
+            notifications_enabled: false, audio_output_device: None,
+            auto_update_enabled: false, show_cover_art: true,
+        }
+    }
 }
 
 impl Config {
@@ -56,6 +71,8 @@ impl Config {
     fn default_auto_update() -> bool {
         true
     }
+
+    fn default_show_cover_art() -> bool { true }
 
     /// Create a new empty config
     pub fn new() -> Self {
@@ -174,6 +191,17 @@ Password = "testpass"
         assert_eq!(config.base_url, "https://example.com");
         assert_eq!(config.username, "testuser");
         assert_eq!(config.password, "testpass");
+        assert!(config.show_cover_art);
+    }
+
+    #[test]
+    fn cover_setting_round_trips() {
+        let mut config = Config::new();
+        assert!(config.show_cover_art);
+        config.show_cover_art = false;
+        let serialized = toml::to_string(&config).unwrap();
+        let loaded: Config = toml::from_str(&serialized).unwrap();
+        assert!(!loaded.show_cover_art);
     }
 
     #[test]

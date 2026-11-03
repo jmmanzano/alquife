@@ -13,7 +13,7 @@ use super::pages;
 use super::widgets::NowPlayingWidget;
 
 /// Draw the entire UI
-pub fn draw(frame: &mut Frame, state: &mut AppState) {
+pub fn draw(frame: &mut Frame, state: &mut AppState, cover: Option<&mut ratatui_image::protocol::StatefulProtocol>) {
     let area = frame.area();
 
     // Main layout:
@@ -68,7 +68,7 @@ pub fn draw(frame: &mut Frame, state: &mut AppState) {
             pages::artists::render(frame, content_area, state);
         }
         Page::Queue => {
-            pages::queue::render(frame, content_area, state);
+            pages::queue::render(frame, content_area, state, cover);
         }
         Page::Playlists => {
             pages::playlists::render(frame, content_area, state);

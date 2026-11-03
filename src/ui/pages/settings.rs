@@ -26,25 +26,47 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(block, area);
 
     if inner.height < 15 {
+        let settings = &state.settings_state;
+        let options = [
+            ("Theme", settings.theme_name().to_string()),
+            ("Audio Backend", settings.audio_backend.label().to_string()),
+            ("Non-stop mode", if settings.non_stop_mode { "On" } else { "Off" }.to_string()),
+            ("Equalizer", if settings.equalizer_enabled { "On" } else { "Off" }.to_string()),
+            ("Notifications", if settings.notifications_enabled { "On" } else { "Off" }.to_string()),
+            ("Auto-update", if settings.auto_update_enabled { "On" } else { "Off" }.to_string()),
+            ("Album covers", if settings.show_cover_art { "On" } else { "Off" }.to_string()),
+        ];
+        let height = inner.height as usize;
+        let start = settings.selected_field.saturating_add(1).saturating_sub(height);
+        for (row, (index, (label, value))) in options.iter().enumerate().skip(start).take(height).enumerate() {
+            let selected = index == settings.selected_field;
+            let style = Style::default().fg(if selected { colors.primary } else { colors.muted });
+            frame.render_widget(Paragraph::new(format!("{} {}: {}", if selected { "▸" } else { " " }, label, value)).style(style),
+                Rect::new(inner.x, inner.y + row as u16, inner.width, 1));
+        }
         return;
     }
 
     let settings = &state.settings_state;
 
+    // Keep all options visible in a standard-height terminal.
+    let gap = if inner.height >= 24 { 1 } else { 0 };
     // Layout fields vertically with spacing
     let chunks = Layout::vertical([
-        Constraint::Length(1), // Spacing
+        Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Theme selector
-        Constraint::Length(1), // Spacing
+        Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Audio backend
-        Constraint::Length(1), // Spacing
+        Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Non-stop mode
-        Constraint::Length(1), // Spacing
+        Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Equalizer
-        Constraint::Length(1), // Spacing
+        Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Notifications
-        Constraint::Length(1), // Spacing
+        Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Auto-update
+        Constraint::Length(gap), // Spacing
+        Constraint::Length(2), // Album covers
         Constraint::Min(1),    // Remaining space
     ])
     .split(inner);
@@ -117,6 +139,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         &colors,
     );
 
+    render_option(frame, chunks[13], "Album covers",
+        if settings.show_cover_art { "On" } else { "Off" },
+        settings.selected_field == 6, &colors);
+
     // Help text at bottom
     let help_text = match settings.selected_field {
         0 => "← → or Enter to change theme (auto-saves)",
@@ -125,6 +151,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         3 => "← → or Enter to toggle equalizer (auto-saves), F7 to choose preset",
         4 => "← → or Enter to toggle desktop notifications when a song changes (auto-saves)",
         5 => "← → or Enter to toggle automatic update checks on startup (auto-saves)",
+        6 => "← → or Enter to show or hide album covers (auto-saves)",
         _ => "",
     };
     let help = Paragraph::new(help_text).style(Style::default().fg(colors.muted));
@@ -135,7 +162,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         inner.width,
         1,
     );
-    frame.render_widget(help, help_area);
+    if inner.height >= 17 + 7 * gap {
+        frame.render_widget(help, help_area);
+    }
 }
 
 /// Render an option selector

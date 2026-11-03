@@ -61,6 +61,22 @@ impl SubsonicClient {
         Ok(url)
     }
 
+    /// Retrieve album artwork using the same authentication as other API calls.
+    pub async fn get_cover_art(&self, id: &str) -> Result<Vec<u8>, SubsonicError> {
+        let mut url = self.build_url("getCoverArt")?;
+        url.query_pairs_mut().append_pair("id", id).append_pair("size", "512");
+        let response = self.http.get(url).timeout(std::time::Duration::from_secs(15))
+            .send().await?.error_for_status()?;
+        if response.content_length().is_some_and(|size| size > 8 * 1024 * 1024) {
+            return Err(SubsonicError::Parse("Cover art is too large".into()));
+        }
+        let bytes = response.bytes().await?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err(SubsonicError::Parse("Cover art is too large".into()));
+        }
+        Ok(bytes.to_vec())
+    }
+
     /// Make an API request and parse the response
     async fn request<T>(&self, endpoint: &str) -> Result<T, SubsonicError>
     where

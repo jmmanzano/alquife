@@ -22,7 +22,7 @@ impl App {
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if field < 5 {
+                    if field < 6 {
                         state.settings_state.selected_field = field + 1;
                     }
                 }
@@ -69,6 +69,13 @@ impl App {
                         state.notify(format!("Auto-update: {}", status));
                         config_changed = true;
                     }
+                    6 => {
+                        state.settings_state.show_cover_art = !state.settings_state.show_cover_art;
+                        state.config.show_cover_art = state.settings_state.show_cover_art;
+                        let status = if state.settings_state.show_cover_art { "On" } else { "Off" };
+                        state.notify(format!("Album covers: {}", status));
+                        config_changed = true;
+                    }
                     _ => {}
                 },
                 // Right / Enter / Space
@@ -113,6 +120,13 @@ impl App {
                             state.config.auto_update_enabled = state.settings_state.auto_update_enabled;
                             let status = if state.settings_state.auto_update_enabled { "On" } else { "Off" };
                             state.notify(format!("Auto-update: {}", status));
+                            config_changed = true;
+                        }
+                        6 => {
+                            state.settings_state.show_cover_art = !state.settings_state.show_cover_art;
+                            state.config.show_cover_art = state.settings_state.show_cover_art;
+                            let status = if state.settings_state.show_cover_art { "On" } else { "Off" };
+                            state.notify(format!("Album covers: {}", status));
                             config_changed = true;
                         }
                         _ => {}

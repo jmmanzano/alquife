@@ -179,6 +179,7 @@ pub struct QueueState {
     /// Minimum user rating required for playback (0 = disabled).
     /// Unrated songs are always allowed.
     pub min_playback_rating: u8,
+    pub cover_loading: bool,
 }
 
 /// Playlists page state
@@ -360,6 +361,7 @@ pub struct SettingsState {
     pub notifications_enabled: bool,
     /// Automatic update checks enabled
     pub auto_update_enabled: bool,
+    pub show_cover_art: bool,
 }
 
 impl Default for SettingsState {
@@ -382,6 +384,7 @@ impl Default for SettingsState {
             eq_rename_buffer: String::new(),
             notifications_enabled: false,
             auto_update_enabled: true,
+            show_cover_art: true,
         }
     }
 }
@@ -531,6 +534,7 @@ impl AppState {
         state.settings_state.non_stop_mode = config.non_stop_mode;
         state.settings_state.equalizer_enabled = config.equalizer_enabled;
         state.settings_state.notifications_enabled = config.notifications_enabled;
+        state.settings_state.show_cover_art = config.show_cover_art;
         // Initialize audio devices page: pre-select configured device
         if let Some(ref configured_device) = config.audio_output_device {
             // Pre-select the sink in the list
