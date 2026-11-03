@@ -118,7 +118,16 @@ impl App {
     ) -> Result<(), Error> {
         match page {
             Page::Artists => self.handle_artists_click(x, y, layout).await,
-            Page::Queue => self.handle_queue_click(y, layout).await,
+            Page::Queue => {
+                let show_cover = self.state.read().await.config.show_cover_art;
+                let queue = if show_cover { crate::ui::pages::queue::queue_areas(layout.content).0 } else { layout.content };
+                if x > queue.x && x < queue.right().saturating_sub(1)
+                    && y > queue.y && y < queue.bottom().saturating_sub(1) {
+                    self.handle_queue_click(y, layout).await
+                } else {
+                    Ok(())
+                }
+            },
             Page::Playlists => self.handle_playlists_click(x, y, layout).await,
             Page::Radio => self.handle_radio_click(y, layout).await,
             _ => Ok(()),

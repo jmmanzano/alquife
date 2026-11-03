@@ -111,6 +111,11 @@ impl App {
                         // Create new client and load data
                         match SubsonicClient::new(&url, &user, &pass) {
                             Ok(client) => {
+                                if let Some(task) = self.cover_task.take() {
+                                    task.abort();
+                                }
+                                self.cover_key = None;
+                                self.cover_protocol = None;
                                 self.subsonic = Some(client);
                                 self.load_initial_data().await;
                                 let mut state = self.state.write().await;

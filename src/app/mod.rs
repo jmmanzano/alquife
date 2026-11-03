@@ -74,9 +74,46 @@ pub struct App {
     last_saved_queue_json: Option<String>,
     /// Last persisted UI state JSON payload (used to avoid unnecessary writes)
     last_saved_ui_state_json: Option<String>,
+    cover_key: Option<(String, String, String)>,
+    cover_task: Option<tokio::task::JoinHandle<Result<image::DynamicImage, String>>>,
+    cover_picker: ratatui_image::picker::Picker,
+    cover_protocol: Option<ratatui_image::protocol::StatefulProtocol>,
     /// MPRIS D-Bus server (Unix / D-Bus only)
     #[cfg(unix)]
     mpris_server: Option<mpris_server::Server<MprisPlayer>>,
+}
+
+#[cfg(test)]
+mod cover_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn disabled_covers_never_start_a_request_and_cancel_pending_work() {
+        let mut config = Config::new();
+        config.base_url = "http://127.0.0.1:1/".into();
+        config.username = "user".into();
+        config.password = "password".into();
+        config.show_cover_art = false;
+        let mut app = App::new(config);
+        {
+            let mut state = app.state.write().await;
+            state.page = Page::Queue;
+            state.queue.push(serde_json::from_str(r#"{"id":"song","title":"Song","coverArt":"cover"}"#).unwrap());
+            state.queue_position = Some(0);
+        }
+        app.update_queue_cover().await;
+        assert!(app.cover_key.is_none());
+        assert!(app.cover_task.is_none());
+
+        app.state.write().await.config.show_cover_art = true;
+        app.update_queue_cover().await;
+        assert!(app.cover_key.is_some());
+        app.state.write().await.config.show_cover_art = false;
+        app.update_queue_cover().await;
+        assert!(app.cover_task.is_none());
+        assert!(app.cover_key.is_none());
+        assert!(!app.state.read().await.queue_state.cover_loading);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,6 +180,10 @@ impl App {
             pending_equalizer_apply_at: None,
             last_saved_queue_json: None,
             last_saved_ui_state_json: None,
+            cover_key: None,
+            cover_task: None,
+            cover_picker: ratatui_image::picker::Picker::halfblocks(),
+            cover_protocol: None,
             #[cfg(unix)]
             mpris_server: None,
         }
@@ -225,6 +266,13 @@ impl App {
             .map_err(UiError::TerminalInit)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend).map_err(UiError::TerminalInit)?;
+
+        self.cover_picker = ratatui_image::picker::Picker::from_query_stdio()
+            .unwrap_or_else(|e| {
+                warn!("Image protocol detection failed: {}", e);
+                ratatui_image::picker::Picker::halfblocks()
+            });
+        info!("Cover art protocol: {:?}", self.cover_picker.protocol_type());
 
         info!("Terminal initialized");
 
@@ -586,6 +634,56 @@ impl App {
     }
 
     /// Main event loop
+    async fn update_queue_cover(&mut self) {
+        let key = {
+            let state = self.state.read().await;
+            if state.config.show_cover_art && state.page == Page::Queue && !state.playing_radio {
+                state.current_song().and_then(|song| song.cover_art.as_ref())
+                    .filter(|id| !id.is_empty())
+                    .map(|id| (state.config.base_url.clone(), state.config.username.clone(), id.clone()))
+            } else {
+                None
+            }
+        };
+        if key != self.cover_key {
+            if let Some(task) = self.cover_task.take() { task.abort(); }
+            self.cover_key = key.clone();
+            self.cover_protocol = None;
+            let mut state = self.state.write().await;
+            state.queue_state.cover_loading = false;
+            if let (Some((_, _, id)), Some(client)) = (key, self.subsonic.clone()) {
+                state.queue_state.cover_loading = true;
+                self.cover_task = Some(tokio::spawn(async move {
+                    let bytes = client.get_cover_art(&id).await.map_err(|e| e.to_string())?;
+                    tokio::task::spawn_blocking(move || {
+                        let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+                            .with_guessed_format().map_err(|e| e.to_string())?;
+                        let mut limits = image::Limits::default();
+                        limits.max_image_width = Some(4096);
+                        limits.max_image_height = Some(4096);
+                        let mut reader = reader;
+                        reader.limits(limits);
+                        reader.decode().map_err(|e| e.to_string())
+                    }).await.map_err(|e| e.to_string())?
+                }));
+            }
+        }
+        if self.cover_task.as_ref().is_some_and(|task| task.is_finished()) {
+            if let Some(task) = self.cover_task.take() {
+                let result = task.await;
+                let mut state = self.state.write().await;
+                state.queue_state.cover_loading = false;
+                match result {
+                    Ok(Ok(image)) => {
+                        self.cover_protocol = Some(self.cover_picker.new_resize_protocol(image));
+                    }
+                    Ok(Err(e)) => warn!("Could not load cover art: {}", e),
+                    Err(e) => warn!("Cover art task failed: {}", e),
+                }
+            }
+        }
+    }
+
     async fn event_loop(
         &mut self,
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
@@ -594,6 +692,7 @@ impl App {
         let mut last_queue_persist_check = std::time::Instant::now();
 
         loop {
+            self.update_queue_cover().await;
             // Determine tick rate for UI updates
             let tick_rate = Duration::from_millis(100);
 
@@ -601,7 +700,7 @@ impl App {
             {
                 let mut state = self.state.write().await;
                 terminal
-                    .draw(|frame| ui::draw(frame, &mut state))
+                    .draw(|frame| ui::draw(frame, &mut state, self.cover_protocol.as_mut()))
                     .map_err(UiError::Render)?;
             }
 

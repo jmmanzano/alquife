@@ -11,6 +11,7 @@ Alquife is a fork of [Ferrosonic](https://github.com/aarondill/ferrosonic) with 
 - **Playlists** - Browse and play server playlists with shuffle
 - **Internet radio** - Play radio stations configured on your Subsonic server
 - **Queue management** - Add, remove, reorder, shuffle, and skip low-rated songs
+- **Album covers** - Display the currently playing album's artwork alongside the queue
 - **Session persistence** - Restores queue and UI state between runs
 - **13 built-in themes** - Multiple dark and light themes (Monokai, Dracula, Nord, Catppuccin, etc.)
 - **Custom themes** - Create your own themes as TOML files in `~/.config/alquife/themes/`
@@ -79,9 +80,16 @@ Password = "your-password"
 Theme = "Default"
 NonStopMode = false
 AudioOutputDevice = ""
+ShowCoverArt = true
 ```
 
 Configure server connection directly in Alquife (F5 - Server page).
+
+### Album covers
+
+The queue page (F2) displays the current song's album cover, fetched from the Subsonic server. Alquife detects supported terminal graphics protocols (Kitty, Sixel, or iTerm2) and falls back to Unicode color blocks when native graphics are unavailable. Image quality therefore depends on your terminal and its settings.
+
+To disable artwork, open **F6 → Album covers** and use `←`, `→`, `Enter`, or `Space` to switch it off. The setting is saved automatically. You can also set `ShowCoverArt = false` in the configuration file. When disabled, Alquife does not request cover images and the queue uses the full page width.
 
 ## Keyboard Shortcuts
 
@@ -117,6 +125,8 @@ Configure server connection directly in Alquife (F5 - Server page).
 | `Enter` | Play selected |
 
 ### Queue (F2)
+
+The left pane contains the queue; the right pane shows the currently playing album's cover when artwork is enabled.
 
 | Key | Action |
 |---|---|
@@ -187,3 +197,7 @@ Issues and pull requests welcome! Check out the [GitHub repository](https://gith
 Place custom theme TOML files in:
 - Linux: `~/.config/alquife/themes/`
 - Windows: `%APPDATA%\Alquife\themes\`
+
+### Album cover looks pixelated
+
+Your terminal may not support a native graphics protocol, causing Alquife to use Unicode color blocks. Try a terminal that supports Kitty graphics or Sixel, or reduce the terminal font size to give the fallback more cells to work with.
