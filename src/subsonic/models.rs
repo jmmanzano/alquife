@@ -124,6 +124,8 @@ pub struct Child {
     pub title: String,
     #[serde(default)]
     pub album: Option<String>,
+    #[serde(default, rename = "albumId")]
+    pub album_id: Option<String>,
     #[serde(default)]
     pub artist: Option<String>,
     #[serde(default)]

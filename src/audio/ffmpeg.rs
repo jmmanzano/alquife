@@ -413,14 +413,12 @@ impl FfmpegController {
         sample_rate: u32,
         channels: u16,
     ) -> Result<(), String> {
-        let mut args = vec![
-            "-reconnect".to_string(), "1".to_string(),
-            "-reconnect_streamed".to_string(), "1".to_string(),
-            "-reconnect_delay_max".to_string(), "5".to_string(),
+        let mut args = Self::input_args(url);
+        args.extend([
             "-probesize".to_string(), "64M".to_string(),
             "-analyzeduration".to_string(), "20M".to_string(),
             "-fflags".to_string(), "+discardcorrupt".to_string(),
-        ];
+        ]);
 
         if start_position > 0.0 {
             args.extend(["-ss".to_string(), format!("{:.3}", start_position)]);
@@ -515,8 +513,22 @@ impl FfmpegController {
             }
         }
 
+        let status = child.wait().map_err(|e| format!("Failed to wait for ffmpeg: {}", e))?;
+        if !status.success() {
+            return Err(format!("FFmpeg failed to decode input (status {})", status));
+        }
+
         debug!("FFmpeg decode finished");
         Ok(())
+    }
+
+    fn input_args(input: &str) -> Vec<String> {
+        if input.starts_with("http://") || input.starts_with("https://") {
+            ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+                .iter().map(|s| s.to_string()).collect()
+        } else {
+            Vec::new()
+        }
     }
 
     fn stop_current(&mut self) {
@@ -705,6 +717,38 @@ impl FfmpegController {
             _ => "Multi-channel",
         };
         Ok(Some(label.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod local_file_tests {
+    use super::*;
+
+    #[test]
+    fn local_file_does_not_use_http_reconnect_options() {
+        assert!(FfmpegController::input_args("C:\\music\\song.audio").is_empty());
+        assert!(FfmpegController::input_args("/tmp/song.audio").is_empty());
+        assert!(!FfmpegController::input_args("https://example.com/stream").is_empty());
+    }
+
+    #[test]
+    fn decodes_cached_audio_file_with_ffmpeg() {
+        if !FfmpegController::check_available() { return; }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("track.audio");
+        let mut wav = Vec::new();
+        let samples: u32 = 4800;
+        wav.extend_from_slice(b"RIFF"); wav.extend_from_slice(&(36 + samples * 2).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt "); wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes()); wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&48000u32.to_le_bytes()); wav.extend_from_slice(&96000u32.to_le_bytes());
+        wav.extend_from_slice(&2u16.to_le_bytes()); wav.extend_from_slice(&16u16.to_le_bytes());
+        wav.extend_from_slice(b"data"); wav.extend_from_slice(&(samples * 2).to_le_bytes());
+        for i in 0..samples { wav.extend_from_slice(&((i as i16 % 100) * 100).to_le_bytes()); }
+        std::fs::write(&path, wav).unwrap();
+        let state = Arc::new(Mutex::new(AudioState::new(100_000)));
+        FfmpegController::decode_stream(path.to_str().unwrap(), state.clone(), 0, None, 0.0, 48000, 1).unwrap();
+        assert!(state.lock().unwrap().available_read() > 0);
     }
 }
 

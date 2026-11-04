@@ -12,6 +12,24 @@ impl App {
 
         let mut state = self.state.write().await;
 
+        if !state.connected {
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if let Some(i) = state.offline_selected { state.offline_selected = Some(i.saturating_sub(1)); }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let count = crate::app::offline::rows(&crate::app::offline::albums(&state.offline_songs)).len();
+                    if let Some(i) = state.offline_selected { state.offline_selected = Some((i + 1).min(count.saturating_sub(1))); }
+                }
+                KeyCode::Enter => {
+                    drop(state);
+                    return self.play_offline_selection().await;
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
         // Handle filter input mode
         if state.artists.filter_active {
             match key.code {
@@ -34,6 +52,25 @@ impl App {
         }
 
         match key.code {
+            KeyCode::Char('D') => {
+                let song = if state.artists.focus == 1 {
+                    state.artists.selected_song.and_then(|i| state.artists.songs.get(i)).cloned()
+                } else { None };
+                let album = if state.artists.focus == 0 {
+                    state.artists.selected_index.and_then(|i| build_tree_items(&state).get(i).and_then(|item| match item {
+                        TreeItem::Album { album } => Some(album.id.clone()), _ => None,
+                    }))
+                } else { None };
+                drop(state);
+                if let Some(song) = song { self.cache_songs(vec![song], true).await; }
+                else if let (Some(id), Some(client)) = (album, self.subsonic.clone()) {
+                    match client.get_album(&id).await {
+                        Ok((_, songs)) => self.cache_songs(songs, true).await,
+                        Err(e) => self.state.write().await.notify_error(format!("Cannot load album: {}", e)),
+                    }
+                }
+                return Ok(());
+            }
             KeyCode::Char('/') => {
                 state.artists.filter_active = true;
             }
@@ -335,5 +372,20 @@ impl App {
         }
 
         Ok(())
+    }
+
+    pub(super) async fn play_offline_selection(&mut self) -> Result<(), Error> {
+        let mut state = self.state.write().await;
+        let albums = crate::app::offline::albums(&state.offline_songs);
+        let rows = crate::app::offline::rows(&albums);
+        let Some((album_index, track)) = state.offline_selected.and_then(|i| rows.get(i)).copied() else { return Ok(()) };
+        let album = &albums[album_index];
+        let queue: Vec<_> = album.songs.iter().map(|&i| state.offline_songs[i].clone()).collect();
+        let index = track.unwrap_or(0);
+        state.queue = queue;
+        state.queue_position = None;
+        state.queue_state.selected = Some(index);
+        drop(state);
+        self.play_queue_position(index).await
     }
 }

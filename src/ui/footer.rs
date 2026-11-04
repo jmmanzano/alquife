@@ -17,6 +17,7 @@ pub struct Footer<'a> {
     sample_rate: Option<u32>,
     notification: Option<&'a Notification>,
     colors: ThemeColors,
+    connected: bool,
 }
 
 impl<'a> Footer<'a> {
@@ -26,8 +27,11 @@ impl<'a> Footer<'a> {
             sample_rate: None,
             notification: None,
             colors,
+            connected: false,
         }
     }
+
+    pub fn connected(mut self, connected: bool) -> Self { self.connected = connected; self }
 
     pub fn sample_rate(mut self, rate: Option<u32>) -> Self {
         self.sample_rate = rate;
@@ -58,6 +62,7 @@ impl<'a> Footer<'a> {
                     ("0-5", "Rating"),
                     ("n", "Add next"),
                     ("Enter", "Play"),
+                    ("D", "Cache song/album"),
                 ]);
             }
             Page::Queue => {
@@ -70,6 +75,8 @@ impl<'a> Footer<'a> {
                     ("c", "Clear history"),
                     ("C", "Clear queue"),
                     ("Enter", "Play"),
+                    ("D", "Cache song"),
+                    ("O", "Cached songs"),
                 ]);
             }
             Page::Playlists => {
@@ -159,16 +166,11 @@ impl Widget for Footer<'_> {
             buf.set_line(chunks[0].x, chunks[0].y, &line, chunks[0].width);
         }
 
-        // Right side: sample rate / status
-        if let Some(rate) = self.sample_rate {
-            let rate_str = format!("{}kHz", rate / 1000);
-            let x = chunks[1].x + chunks[1].width.saturating_sub(rate_str.len() as u16);
-            buf.set_string(
-                x,
-                chunks[1].y,
-                &rate_str,
-                Style::default().fg(self.colors.success),
-            );
-        }
+        let status = if self.connected { "Connected" } else { "Offline" };
+        let text = match self.sample_rate { Some(rate) => format!("{}kHz | {}", rate / 1000, status), None => status.to_string() };
+        let width = chunks[1].width as usize;
+        let text = if text.len() > width { &text[text.len() - width..] } else { &text };
+        let x = chunks[1].x + chunks[1].width.saturating_sub(text.len() as u16);
+        buf.set_string(x, chunks[1].y, text, Style::default().fg(if self.connected { self.colors.success } else { self.colors.error }));
     }
 }

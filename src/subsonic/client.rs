@@ -33,6 +33,7 @@ impl SubsonicClient {
 
         let http = Client::builder()
             .user_agent(CLIENT_NAME)
+            .timeout(std::time::Duration::from_secs(5))
             .build()
             .map_err(SubsonicError::Http)?;
 
@@ -132,6 +133,7 @@ impl SubsonicClient {
                     message: error.message,
                 });
             }
+            return Err(SubsonicError::Parse("Server ping failed".into()));
         }
 
         info!("Server ping successful");

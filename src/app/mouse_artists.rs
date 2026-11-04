@@ -1,4 +1,3 @@
-use tracing::error;
 
 use crate::error::Error;
 
@@ -84,7 +83,6 @@ impl App {
                                         }
 
                                         let first_song = songs[0].clone();
-                                        let stream_url = client.get_stream_url(&first_song.id);
 
                                         let mut state = self.state.write().await;
                                         let count = songs.len();
@@ -105,14 +103,7 @@ impl App {
                                         state.notify(format!("Playing album: {} ({} songs)", album_name, count));
                                         drop(state);
 
-                                        if let Ok(url) = stream_url {
-                                            if self.ffmpeg.is_paused().unwrap_or(false) {
-                                                let _ = self.ffmpeg.resume();
-                                            }
-                                            if let Err(e) = self.ffmpeg.loadfile(&url) {
-                                                error!("Failed to play: {}", e);
-                                            }
-                                        }
+                                        self.play_queue_position(0).await?;
                                     }
                                     Err(e) => {
                                         let mut state = self.state.write().await;
@@ -174,16 +165,7 @@ impl App {
                     state.notify(format!("Playing: {}", song.title));
                     drop(state);
 
-                    if let Some(ref client) = self.subsonic {
-                        if let Ok(url) = client.get_stream_url(&song.id) {
-                            if self.ffmpeg.is_paused().unwrap_or(false) {
-                                let _ = self.ffmpeg.resume();
-                            }
-                            if let Err(e) = self.ffmpeg.loadfile(&url) {
-                                error!("Failed to play: {}", e);
-                            }
-                        }
-                    }
+                    self.play_queue_position(item_index).await?;
                     self.last_click = Some((x, y, std::time::Instant::now()));
                     return Ok(());
                 }

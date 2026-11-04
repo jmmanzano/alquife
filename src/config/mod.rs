@@ -49,6 +49,17 @@ pub struct Config {
     /// Show album artwork on the queue page.
     #[serde(rename = "ShowCoverArt", default = "Config::default_show_cover_art")]
     pub show_cover_art: bool,
+    /// Maximum song cache size in GB (0 disables the cache).
+    #[serde(rename = "CacheSizeGB", default = "Config::default_cache_size_gb", deserialize_with = "deserialize_cache_size")]
+    pub cache_size_gb: u8,
+}
+
+fn deserialize_cache_size<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+    let size = u8::deserialize(deserializer)?;
+    if size > 5 {
+        return Err(serde::de::Error::custom("CacheSizeGB must be between 0 and 5"));
+    }
+    Ok(size)
 }
 
 impl Default for Config {
@@ -58,7 +69,7 @@ impl Default for Config {
             theme: String::new(), non_stop_mode: false, audio_backend: String::new(),
             equalizer_enabled: false, equalizer_preset: String::new(),
             notifications_enabled: false, audio_output_device: None,
-            auto_update_enabled: false, show_cover_art: true,
+            auto_update_enabled: false, show_cover_art: true, cache_size_gb: 1,
         }
     }
 }
@@ -73,6 +84,8 @@ impl Config {
     }
 
     fn default_show_cover_art() -> bool { true }
+
+    fn default_cache_size_gb() -> u8 { 1 }
 
     /// Create a new empty config
     pub fn new() -> Self {
@@ -202,6 +215,20 @@ Password = "testpass"
         let serialized = toml::to_string(&config).unwrap();
         let loaded: Config = toml::from_str(&serialized).unwrap();
         assert!(!loaded.show_cover_art);
+    }
+
+    #[test]
+    fn cache_size_defaults_and_validates_range() {
+        let default: Config = toml::from_str("").unwrap();
+        assert_eq!(default.cache_size_gb, 1);
+        for size in 0..=5 {
+            let config: Config = toml::from_str(&format!("CacheSizeGB = {size}")).unwrap();
+            assert_eq!(config.cache_size_gb, size);
+            let roundtrip: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+            assert_eq!(roundtrip.cache_size_gb, size);
+        }
+        assert!(toml::from_str::<Config>("CacheSizeGB = 6").is_err());
+        assert!(toml::from_str::<Config>("CacheSizeGB = -1").is_err());
     }
 
     #[test]

@@ -30,6 +30,9 @@ impl App {
         state.clear_notification();
 
         // Keep page switching available even when editing text fields
+        if matches!(key.code, KeyCode::F(1..=8)) {
+            state.settings_state.confirm_clear_cache = false;
+        }
         match key.code {
             KeyCode::F(1) => {
                 state.page = Page::Artists;
@@ -81,6 +84,11 @@ impl App {
                 Page::Radio => self.handle_radio_key(key).await,
                 _ => Ok(()),
             };
+        }
+
+        if state.page == Page::Settings && matches!(key.code, KeyCode::Left | KeyCode::Right | KeyCode::Enter | KeyCode::Char('h' | 'l' | ' ')) {
+            drop(state);
+            return self.handle_settings_key(key).await;
         }
 
         // Global keybindings

@@ -116,11 +116,20 @@ impl App {
                                 }
                                 self.cover_key = None;
                                 self.cover_protocol = None;
+                                if let Some(task) = self.connection_task.take() { task.abort(); }
+                                self.state.write().await.connected = false;
+                                self.last_connection_check = std::time::Instant::now() - std::time::Duration::from_secs(30);
                                 self.subsonic = Some(client);
-                                self.load_initial_data().await;
+                                let connected = if let Some(client) = &self.subsonic {
+                                    matches!(tokio::time::timeout(std::time::Duration::from_secs(2), client.ping()).await, Ok(Ok(())))
+                                } else { false };
+                                if connected {
+                                    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), self.load_initial_data()).await;
+                                }
                                 let mut state = self.state.write().await;
+                                state.connected = connected;
                                 state.server_state.status =
-                                    Some("Connected and loaded data!".to_string());
+                                    Some(if connected { "Connected" } else { "Saved; server offline" }.to_string());
                             }
                             Err(e) => {
                                 let mut state = self.state.write().await;

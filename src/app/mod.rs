@@ -14,6 +14,7 @@ mod input_settings;
 mod mouse;
 mod mouse_artists;
 mod mouse_playlists;
+pub mod offline;
 mod playback;
 mod radio_manager;
 pub mod state;
@@ -78,6 +79,10 @@ pub struct App {
     cover_task: Option<tokio::task::JoinHandle<Result<image::DynamicImage, String>>>,
     cover_picker: ratatui_image::picker::Picker,
     cover_protocol: Option<ratatui_image::protocol::StatefulProtocol>,
+    cache: crate::cache::SongCache,
+    cache_task: Option<tokio::task::JoinHandle<()>>,
+    connection_task: Option<tokio::task::JoinHandle<bool>>,
+    last_connection_check: std::time::Instant,
     /// MPRIS D-Bus server (Unix / D-Bus only)
     #[cfg(unix)]
     mpris_server: Option<mpris_server::Server<MprisPlayer>>,
@@ -184,6 +189,10 @@ impl App {
             cover_task: None,
             cover_picker: ratatui_image::picker::Picker::halfblocks(),
             cover_protocol: None,
+            cache: crate::cache::SongCache::default(),
+            cache_task: None,
+            connection_task: None,
+            last_connection_check: std::time::Instant::now() - Duration::from_secs(30),
             #[cfg(unix)]
             mpris_server: None,
         }
@@ -191,6 +200,7 @@ impl App {
 
     /// Run the application
     pub async fn run(&mut self) -> Result<(), Error> {
+        self.cache.trim(self.state.read().await.config.cache_size_gb).await;
         // Initialize FFmpeg backend (only supported backend)
         if FfmpegController::check_available() {
             if let Err(e) = self.ffmpeg.start() {
@@ -277,13 +287,27 @@ impl App {
         info!("Terminal initialized");
 
         // Load initial data if configured
-        if self.subsonic.is_some() {
-            self.load_initial_data().await;
+        if let Some(client) = self.subsonic.as_ref() {
+            match tokio::time::timeout(Duration::from_secs(2), client.ping()).await {
+                Ok(Ok(())) => {
+                    self.state.write().await.connected = true;
+                    let _ = tokio::time::timeout(Duration::from_secs(3), self.load_initial_data()).await;
+                },
+                _ => warn!("Server unavailable at startup; restoring local state"),
+            }
         }
 
         // Restore persisted queue from previous session
         self.load_persisted_queue().await;
         self.load_persisted_ui_state().await;
+        {
+            let mut state = self.state.write().await;
+            if !state.connected {
+                state.offline_songs = crate::cache::SongCache::songs(&state.config);
+                state.offline_selected = (!state.offline_songs.is_empty()).then_some(0);
+                if !state.offline_songs.is_empty() { state.page = Page::Artists; }
+            }
+        }
 
         // Main event loop
         let result = self.event_loop(&mut terminal).await;
@@ -293,6 +317,8 @@ impl App {
         self.maybe_persist_ui_state().await;
 
         // Cleanup audio backends
+        if let Some(task) = self.cache_task.take() { task.abort(); }
+        if let Some(task) = self.connection_task.take() { task.abort(); }
         let _ = self.ffmpeg.quit();
 
         // Cleanup terminal
@@ -692,6 +718,7 @@ impl App {
         let mut last_queue_persist_check = std::time::Instant::now();
 
         loop {
+            self.update_connection().await;
             self.update_queue_cover().await;
             // Determine tick rate for UI updates
             let tick_rate = Duration::from_millis(100);
@@ -769,5 +796,77 @@ impl App {
         }
 
         Ok(())
+    }
+
+    async fn update_connection(&mut self) {
+        if self.connection_task.as_ref().is_some_and(|t| t.is_finished()) {
+            if let Some(task) = self.connection_task.take() {
+                let connected = task.await.unwrap_or(false);
+                let was_connected = {
+                    let mut state = self.state.write().await;
+                    let previous = state.connected;
+                    state.connected = connected;
+                    if !connected && previous {
+                        state.offline_songs = crate::cache::SongCache::songs(&state.config);
+                        state.offline_selected = (!state.offline_songs.is_empty()).then_some(0);
+                    }
+                    previous
+                };
+                if connected && !was_connected {
+                    if let Some(client) = self.subsonic.clone() {
+                        let state = self.state.clone();
+                        let identity = { let state = state.read().await; (state.config.base_url.clone(), state.config.username.clone()) };
+                        tokio::spawn(async move {
+                            let artists = client.get_artists().await;
+                            let playlists = client.get_playlists().await;
+                            let stations = client.get_internet_radio_stations().await;
+                            let mut state = state.write().await;
+                            if (state.config.base_url.clone(), state.config.username.clone()) != identity { return; }
+                            if let Ok(artists) = artists { state.artists.artists = artists; if !state.artists.artists.is_empty() && state.artists.selected_index.is_none() { state.artists.selected_index = Some(0); } }
+                            if let Ok(playlists) = playlists { state.playlists.playlists = playlists; }
+                            if let Ok(stations) = stations { state.radio.stations = stations; }
+                        });
+                    }
+                }
+            }
+        }
+        if self.connection_task.is_none() && self.last_connection_check.elapsed() >= Duration::from_secs(10) {
+            self.last_connection_check = std::time::Instant::now();
+            if let Some(client) = self.subsonic.clone() {
+                self.connection_task = Some(tokio::spawn(async move {
+                    matches!(tokio::time::timeout(Duration::from_secs(3), client.ping()).await, Ok(Ok(())))
+                }));
+            } else { self.state.write().await.connected = false; }
+        }
+    }
+
+    async fn cache_songs(&mut self, songs: Vec<crate::subsonic::models::Child>, manual: bool) {
+        if self.cache_task.as_ref().is_some_and(|t| !t.is_finished()) {
+            if manual { self.state.write().await.notify_error("A cache download is already running"); }
+            return;
+        }
+        let config = self.state.read().await.config.clone();
+        if config.cache_size_gb == 0 {
+            if manual { self.state.write().await.notify_error("Cache is disabled in Settings"); }
+            return;
+        }
+        let Some(client) = self.subsonic.clone() else { return };
+        let cache = self.cache.clone();
+        let state = self.state.clone();
+        if manual { state.write().await.notify(format!("Caching {} song(s)...", songs.len())); }
+        self.cache_task = Some(tokio::spawn(async move {
+            let mut failures = 0;
+            for song in songs {
+                let Ok(url) = client.get_stream_url(&song.id) else { failures += 1; continue };
+                if let Err(e) = cache.download(config.clone(), song, url).await {
+                    warn!("Song cache download failed: {}", e); failures += 1;
+                }
+            }
+            if manual {
+                let mut state = state.write().await;
+                if failures == 0 { state.notify("Cache download complete"); }
+                else { state.notify_error(format!("Cache download: {} song(s) failed", failures)); }
+            }
+        }));
     }
 }

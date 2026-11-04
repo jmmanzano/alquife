@@ -96,6 +96,7 @@ pub fn draw(frame: &mut Frame, state: &mut AppState, cover: Option<&mut ratatui_
 
     // Render footer
     let footer = Footer::new(state.page, colors)
+        .connected(state.connected)
         .sample_rate(state.now_playing.sample_rate)
         .notification(state.notification.as_ref());
     frame.render_widget(footer, footer_area);
