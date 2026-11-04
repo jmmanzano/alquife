@@ -11,6 +11,7 @@ Alquife is a fork of [Ferrosonic](https://github.com/aarondill/ferrosonic) with 
 - **Playlists** - Browse and play server playlists with shuffle
 - **Internet radio** - Play radio stations configured on your Subsonic server
 - **Queue management** - Add, remove, reorder, shuffle, and skip low-rated songs
+- **Offline song cache** - Automatically cache played songs or download selected songs and albums for offline playback
 - **Album covers** - Display the currently playing album's artwork alongside the queue
 - **Session persistence** - Restores queue and UI state between runs
 - **13 built-in themes** - Multiple dark and light themes (Monokai, Dracula, Nord, Catppuccin, etc.)
@@ -81,6 +82,7 @@ Theme = "Default"
 NonStopMode = false
 AudioOutputDevice = ""
 ShowCoverArt = true
+CacheSizeGB = 1
 ```
 
 Configure server connection directly in Alquife (F5 - Server page).
@@ -90,6 +92,16 @@ Configure server connection directly in Alquife (F5 - Server page).
 The queue page (F2) displays the current song's album cover, fetched from the Subsonic server. Alquife detects supported terminal graphics protocols (Kitty, Sixel, or iTerm2) and falls back to Unicode color blocks when native graphics are unavailable. Image quality therefore depends on your terminal and its settings.
 
 To disable artwork, open **F6 → Album covers** and use `←`, `→`, `Enter`, or `Space` to switch it off. The setting is saved automatically. You can also set `ShowCoverArt = false` in the configuration file. When disabled, Alquife does not request cover images and the queue uses the full page width.
+
+### Offline playback and cache
+
+Alquife starts when the server is unavailable and restores the saved queue. The footer displays **Connected** or **Offline**, based on periodic authenticated server checks. When offline, **F1 Artists** groups cached tracks by album: select an album to play its cached tracks, or a track to start there, and press Enter (or double-click). This replaces the queue only when playback is requested. Other songs require the server. In **F2 Queue**, press `O` to replace the queue with the available cached songs.
+
+Songs played online are downloaded in the background when the cache is available. To download manually, press `D` on a selected song in F2, or on a selected song or album in F1. Downloads require a server connection. The cache has a shared size limit, and older entries may be removed to make room, including manually downloaded songs. Only completed downloads are available offline.
+
+Set **F6 → Cache size** to an integer from 0 to 5 GB (default 1 GB). The setting is saved as `CacheSizeGB`; 0 disables caching and removes cached entries where possible. Cache data is separated by server and user, under `%LOCALAPPDATA%\Alquife\cache\songs` on Windows and `$XDG_CACHE_HOME/alquife/songs` (normally `~/.cache/alquife/songs`) on Linux. Cache content is disposable and is not a backup of your music.
+
+To remove cached songs without changing the size limit, choose **F6 → Clear cache** and press Enter twice to confirm. This clears cached songs for all configured servers and users and stops playback if a cached file is playing.
 
 ## Keyboard Shortcuts
 
@@ -123,6 +135,9 @@ To disable artwork, open **F6 → Album covers** and use `←`, `→`, `Enter`, 
 | `0-5` | Rate song |
 | `/` | Filter artists |
 | `Enter` | Play selected |
+| `D` | Download the selected song or album to the cache (online) |
+
+When offline, F1 shows cached albums and tracks. Use `↑/↓` and `Enter`, or double-click, to play the selected album or track.
 
 ### Queue (F2)
 
@@ -137,6 +152,8 @@ The left pane contains the queue; the right pane shows the currently playing alb
 | `c` / `C` | Clear history / Clear queue |
 | `0-5` | Rate song |
 | `Enter` | Play selected |
+| `D` | Download the selected song to the cache |
+| `O` | Replace the queue with cached songs |
 
 ### Playlists (F3)
 

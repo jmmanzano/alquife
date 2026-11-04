@@ -362,6 +362,7 @@ pub struct SettingsState {
     /// Automatic update checks enabled
     pub auto_update_enabled: bool,
     pub show_cover_art: bool,
+    pub confirm_clear_cache: bool,
 }
 
 impl Default for SettingsState {
@@ -385,6 +386,7 @@ impl Default for SettingsState {
             notifications_enabled: false,
             auto_update_enabled: true,
             show_cover_art: true,
+            confirm_clear_cache: false,
         }
     }
 }
@@ -515,6 +517,11 @@ pub struct AppState {
     pub layout: LayoutAreas,
     /// Whether currently playing a radio stream (no queue)
     pub playing_radio: bool,
+    /// Last successful authenticated server ping.
+    pub connected: bool,
+    /// Offline library, kept separate from the playback queue.
+    pub offline_songs: Vec<Child>,
+    pub offline_selected: Option<usize>,
 }
 
 impl AppState {

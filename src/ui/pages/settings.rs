@@ -25,7 +25,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.height < 15 {
+    if inner.height < 19 {
         let settings = &state.settings_state;
         let options = [
             ("Theme", settings.theme_name().to_string()),
@@ -35,6 +35,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             ("Notifications", if settings.notifications_enabled { "On" } else { "Off" }.to_string()),
             ("Auto-update", if settings.auto_update_enabled { "On" } else { "Off" }.to_string()),
             ("Album covers", if settings.show_cover_art { "On" } else { "Off" }.to_string()),
+            ("Cache size", format!("{} GB", state.config.cache_size_gb)),
+            ("Clear cache", if settings.confirm_clear_cache { "Confirm with Enter" } else { "Press Enter" }.to_string()),
         ];
         let height = inner.height as usize;
         let start = settings.selected_field.saturating_add(1).saturating_sub(height);
@@ -50,7 +52,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let settings = &state.settings_state;
 
     // Keep all options visible in a standard-height terminal.
-    let gap = if inner.height >= 24 { 1 } else { 0 };
+    let gap = if inner.height >= 30 { 1 } else { 0 };
     // Layout fields vertically with spacing
     let chunks = Layout::vertical([
         Constraint::Length(gap), // Spacing
@@ -67,6 +69,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         Constraint::Length(2), // Auto-update
         Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Album covers
+        Constraint::Length(gap), // Spacing
+        Constraint::Length(2), // Cache size
+        Constraint::Length(gap), // Spacing
+        Constraint::Length(2), // Clear cache
         Constraint::Min(1),    // Remaining space
     ])
     .split(inner);
@@ -142,6 +148,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     render_option(frame, chunks[13], "Album covers",
         if settings.show_cover_art { "On" } else { "Off" },
         settings.selected_field == 6, &colors);
+    render_option(frame, chunks[15], "Cache size", &format!("{} GB", state.config.cache_size_gb),
+        settings.selected_field == 7, &colors);
+    render_option(frame, chunks[17], "Clear cache", if settings.confirm_clear_cache { "Confirm with Enter" } else { "Press Enter" },
+        settings.selected_field == 8, &colors);
 
     // Help text at bottom
     let help_text = match settings.selected_field {
@@ -152,6 +162,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         4 => "← → or Enter to toggle desktop notifications when a song changes (auto-saves)",
         5 => "← → or Enter to toggle automatic update checks on startup (auto-saves)",
         6 => "← → or Enter to show or hide album covers (auto-saves)",
+        7 => "← → to set cache size (0 disables and clears it; auto-saves)",
+        8 => "Enter twice to remove cached songs for all servers and users",
         _ => "",
     };
     let help = Paragraph::new(help_text).style(Style::default().fg(colors.muted));
@@ -162,7 +174,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         inner.width,
         1,
     );
-    if inner.height >= 17 + 7 * gap {
+    if inner.height >= 21 + 9 * gap {
         frame.render_widget(help, help_area);
     }
 }

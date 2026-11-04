@@ -2,6 +2,14 @@
 
 use std::path::PathBuf;
 
+/// Platform cache directory, separate from configuration and queue snapshots.
+pub fn cache_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    { std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Alquife").join("cache")) }
+    #[cfg(not(windows))]
+    { dirs::cache_dir().map(|p| p.join("alquife")) }
+}
+
 /// Get the default config directory for alquife
 /// - Windows: %LOCALAPPDATA%\Alquife
 /// - Linux: ~/.config/alquife

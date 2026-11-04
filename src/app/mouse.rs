@@ -117,7 +117,31 @@ impl App {
         layout: &LayoutAreas,
     ) -> Result<(), Error> {
         match page {
-            Page::Artists => self.handle_artists_click(x, y, layout).await,
+            Page::Artists => {
+                let mut state = self.state.write().await;
+                if !state.connected {
+                    let area = layout.content;
+                    if x > area.x && x < area.right().saturating_sub(1) && y > area.y && y < area.bottom().saturating_sub(1) {
+                        let visible = area.height.saturating_sub(2) as usize;
+                        let offset = state.offline_selected.unwrap_or(0).saturating_sub(visible.saturating_sub(1));
+                        let index = offset + (y - area.y - 1) as usize;
+                        let row_count = crate::app::offline::rows(&crate::app::offline::albums(&state.offline_songs)).len();
+                        if index < row_count {
+                            let second = state.offline_selected == Some(index) && self.last_click.is_some_and(|(lx, ly, t)| lx == x && ly == y && t.elapsed().as_millis() < 500);
+                            state.offline_selected = Some(index);
+                            self.last_click = Some((x, y, std::time::Instant::now()));
+                            if second {
+                                drop(state);
+                                return self.play_offline_selection().await;
+                            }
+                        }
+                    }
+                    Ok(())
+                } else {
+                    drop(state);
+                    self.handle_artists_click(x, y, layout).await
+                }
+            },
             Page::Queue => {
                 let show_cover = self.state.read().await.config.show_cover_art;
                 let queue = if show_cover { crate::ui::pages::queue::queue_areas(layout.content).0 } else { layout.content };
@@ -191,6 +215,10 @@ impl App {
         let mut state = self.state.write().await;
         match state.page {
             Page::Artists => {
+                if !state.connected {
+                    state.offline_selected = state.offline_selected.map(|i| i.saturating_sub(1));
+                    return Ok(());
+                }
                 if state.artists.focus == 0 {
                     if let Some(sel) = state.artists.selected_index {
                         if sel > 0 {
@@ -244,6 +272,11 @@ impl App {
         let mut state = self.state.write().await;
         match state.page {
             Page::Artists => {
+                if !state.connected {
+                    let count = crate::app::offline::rows(&crate::app::offline::albums(&state.offline_songs)).len();
+                    state.offline_selected = state.offline_selected.map(|i| (i + 1).min(count.saturating_sub(1)));
+                    return Ok(());
+                }
                 if state.artists.focus == 0 {
                     let tree_items = crate::ui::pages::artists::build_tree_items(&state);
                     let max = tree_items.len().saturating_sub(1);

@@ -10,6 +10,27 @@ impl App {
         let mut state = self.state.write().await;
 
         match key.code {
+            KeyCode::Char('D') => {
+                let song = state.queue_state.selected.and_then(|i| state.queue.get(i)).cloned();
+                drop(state);
+                if let Some(song) = song { self.cache_songs(vec![song], true).await; }
+                return Ok(());
+            }
+            KeyCode::Char('O') => {
+                let songs = crate::cache::SongCache::songs(&state.config);
+                if songs.is_empty() { state.notify("No cached songs available"); }
+                else {
+                    let count = songs.len();
+                    drop(state);
+                    self.stop_playback().await?;
+                    let mut state = self.state.write().await;
+                    state.queue = songs;
+                    state.queue_position = None;
+                    state.queue_state.selected = Some(0);
+                    state.notify(format!("Loaded {} cached song(s) into queue", count));
+                    return Ok(());
+                }
+            }
             KeyCode::Up | KeyCode::Char('k') => {
                 if let Some(sel) = state.queue_state.selected {
                     if sel > 0 {

@@ -9,6 +9,7 @@ impl App {
     pub(super) async fn handle_settings_key(&mut self, key: event::KeyEvent) -> Result<(), Error> {
         let mut config_changed = false;
         let mut equalizer_changed = false;
+        let mut clear_cache = false;
 
         {
             let mut state = self.state.write().await;
@@ -17,12 +18,14 @@ impl App {
             match key.code {
                 // Navigate between fields
                 KeyCode::Up | KeyCode::Char('k') => {
+                    state.settings_state.confirm_clear_cache = false;
                     if field > 0 {
                         state.settings_state.selected_field = field - 1;
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if field < 6 {
+                    state.settings_state.confirm_clear_cache = false;
+                    if field < 8 {
                         state.settings_state.selected_field = field + 1;
                     }
                 }
@@ -74,6 +77,12 @@ impl App {
                         state.config.show_cover_art = state.settings_state.show_cover_art;
                         let status = if state.settings_state.show_cover_art { "On" } else { "Off" };
                         state.notify(format!("Album covers: {}", status));
+                        config_changed = true;
+                    }
+                    7 => {
+                        state.config.cache_size_gb = state.config.cache_size_gb.saturating_sub(1);
+                        let size = state.config.cache_size_gb;
+                        state.notify(format!("Cache size: {} GB", size));
                         config_changed = true;
                     }
                     _ => {}
@@ -129,6 +138,21 @@ impl App {
                             state.notify(format!("Album covers: {}", status));
                             config_changed = true;
                         }
+                        7 => {
+                            state.config.cache_size_gb = (state.config.cache_size_gb + 1).min(5);
+                            let size = state.config.cache_size_gb;
+                            state.notify(format!("Cache size: {} GB", size));
+                            config_changed = true;
+                        }
+                        8 if matches!(key.code, KeyCode::Enter | KeyCode::Char(' ')) => {
+                            if state.settings_state.confirm_clear_cache {
+                                state.settings_state.confirm_clear_cache = false;
+                                clear_cache = true;
+                            } else {
+                                state.settings_state.confirm_clear_cache = true;
+                                state.notify("Press Enter again to clear all cached songs");
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -136,7 +160,38 @@ impl App {
             }
         }
 
+        if clear_cache {
+            if let Some(task) = self.cache_task.take() { task.abort(); let _ = task.await; }
+            let cache_root = crate::config::paths::cache_dir().map(|p| p.join("songs"));
+            let playing_cached = self.ffmpeg.get_current_url().as_ref().is_some_and(|url| {
+                cache_root.as_ref().is_some_and(|root| std::path::Path::new(url).starts_with(root))
+            });
+            if playing_cached {
+                let _ = self.ffmpeg.stop();
+                let mut state = self.state.write().await;
+                state.now_playing.state = PlaybackState::Stopped;
+                state.now_playing.song = None;
+                state.queue_position = None;
+            }
+            let result = self.cache.clear().await;
+            let mut state = self.state.write().await;
+            state.offline_songs = crate::cache::SongCache::songs(&state.config);
+            state.offline_selected = (!state.offline_songs.is_empty()).then_some(0);
+            match result {
+                Ok(()) => state.notify("Cache cleared"),
+                Err(e) => { warn!("Failed to clear cache: {}", e); state.notify_error("Could not remove all cached files; see log"); }
+            }
+        }
+
         if config_changed {
+            if field_is_cache(&self.state).await {
+                if let Some(task) = self.cache_task.take() { task.abort(); let _ = task.await; }
+                let size = self.state.read().await.config.cache_size_gb;
+                self.cache.trim(size).await;
+                let mut state = self.state.write().await;
+                state.offline_songs = crate::cache::SongCache::songs(&state.config);
+                state.offline_selected = (!state.offline_songs.is_empty()).then_some(0);
+            }
             // Save config
             let state = self.state.read().await;
             if let Err(e) = state.config.save_default() {
@@ -153,4 +208,8 @@ impl App {
 
         Ok(())
     }
+}
+
+async fn field_is_cache(state: &SharedState) -> bool {
+    state.read().await.settings_state.selected_field == 7
 }

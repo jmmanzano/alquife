@@ -279,6 +279,7 @@ impl App {
                                 if notifications_enabled {
                                     Self::send_song_notification(song);
                                 }
+                                self.cache_songs(vec![song.clone()], false).await;
                             }
 
                             // Remove the finished track (index 0) from FFmpeg's playlist
@@ -535,7 +536,14 @@ impl App {
         };
         drop(state);
 
-        let stream_url = if let Some(ref client) = self.subsonic {
+        let (config, connected) = { let state = self.state.read().await; (state.config.clone(), state.connected) };
+        let local = crate::cache::SongCache::lookup(&config, &song.id);
+        let stream_url = if let Some(path) = local {
+            path.to_string_lossy().into_owned()
+        } else if !connected {
+            self.state.write().await.notify_error("Song is not cached and the server is offline");
+            return Ok(());
+        } else if let Some(ref client) = self.subsonic {
             match client.get_stream_url(&song.id) {
                 Ok(url) => url,
                 Err(e) => {
@@ -580,6 +588,10 @@ impl App {
             return Ok(());
         }
 
+        if connected && crate::cache::SongCache::lookup(&config, &song.id).is_none() {
+            self.cache_songs(vec![song], false).await;
+        }
+
         self.preload_next_track(play_pos).await;
 
         Ok(())
@@ -601,10 +613,15 @@ impl App {
             Some(s) => s.clone(),
             None => return,
         };
+        let config = state.config.clone();
+        let connected = state.connected;
         drop(state);
 
-        if let Some(ref client) = self.subsonic {
-            if let Ok(url) = client.get_stream_url(&next_song.id) {
+        {
+            let url = crate::cache::SongCache::lookup(&config, &next_song.id)
+                .map(|p| p.to_string_lossy().into_owned())
+                .or_else(|| if connected { self.subsonic.as_ref().and_then(|c| c.get_stream_url(&next_song.id).ok()) } else { None });
+            if let Some(url) = url {
                 debug!("Pre-loading next track for gapless: {}", next_song.title);
                 if let Err(e) = self.audio_loadfile_append(&url) {
                     debug!("Failed to pre-load next track: {}", e);
@@ -657,6 +674,7 @@ impl App {
             is_dir: false,
             title: station.name.clone(),
             album: Some("Internet Radio".to_string()),
+            album_id: None,
             artist: station.home_page_url.clone().or_else(|| Some("Radio".to_string())),
             track: None,
             year: None,

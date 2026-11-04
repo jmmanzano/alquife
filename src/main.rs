@@ -9,6 +9,7 @@
 
 mod app;
 mod audio;
+mod cache;
 mod config;
 mod error;
 mod mpris;

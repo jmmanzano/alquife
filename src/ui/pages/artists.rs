@@ -12,6 +12,25 @@ use crate::app::state::AppState;
 use crate::ui::theme::ThemeColors;
 use crate::subsonic::models::{Album, Artist};
 
+#[cfg(test)]
+mod offline_tests {
+    use super::*;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    #[test]
+    fn offline_library_shows_cached_song_without_changing_queue() {
+        let mut state = AppState::default();
+        state.offline_songs.push(serde_json::from_str(r#"{"id":"s1","title":"Cached song","artist":"Artist","album":"Album"}"#).unwrap());
+        state.offline_selected = Some(0);
+        let mut terminal = Terminal::new(TestBackend::new(100, 10)).unwrap();
+        terminal.draw(|frame| render(frame, frame.area(), &mut state)).unwrap();
+        let text: String = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect();
+        assert!(text.contains("Offline library"));
+        assert!(text.contains("Cached song"));
+        assert!(state.queue.is_empty());
+    }
+}
+
 
 /// A tree item - either an artist or an album
 #[derive(Clone)]
@@ -70,6 +89,33 @@ pub fn build_tree_items(state: &AppState) -> Vec<TreeItem> {
 /// Render the artists page
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let colors = *state.settings_state.theme_colors();
+
+    if !state.connected {
+        let albums = crate::app::offline::albums(&state.offline_songs);
+        let block = Block::default().borders(Borders::ALL)
+            .title(format!(" Offline library ({} albums, {} songs) — ↑/↓ select, Enter play ", albums.len(), state.offline_songs.len()))
+            .border_style(Style::default().fg(colors.border_focused));
+        if state.offline_songs.is_empty() {
+            frame.render_widget(Paragraph::new("No cached songs available. Connect to the server and play or download songs first.")
+                .style(Style::default().fg(colors.muted)).block(block), area);
+        } else {
+            let items: Vec<ListItem> = crate::app::offline::rows(&albums).iter().map(|&(index, track)| {
+                let album = &albums[index];
+                match track {
+                    None => ListItem::new(format!("▾ {} — {}", album.artist, album.name)).style(Style::default().fg(colors.primary).add_modifier(Modifier::BOLD)),
+                    Some(track) => {
+                        let song = &state.offline_songs[album.songs[track]];
+                        ListItem::new(format!("    {:02}. {}", song.track.unwrap_or((track + 1) as i32), song.title))
+                    }
+                }
+            }).collect();
+            let list = List::new(items).block(block).highlight_style(Style::default().bg(colors.highlight_bg)).highlight_symbol("▸ ");
+            let mut selected = ListState::default();
+            selected.select(state.offline_selected);
+            frame.render_stateful_widget(list, area, &mut selected);
+        }
+        return;
+    }
 
     // Split into two panes: [Tree Browser] [Song List]
     let chunks =
