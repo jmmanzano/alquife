@@ -123,6 +123,14 @@ To remove cached songs without changing the size limit, choose **F6 → Clear ca
 | `F6` | Settings |
 | `F7` | Equalizer |
 | `F8` | Audio devices |
+| `F9` | Hide to notification area (Windows, dedicated classic console only) |
+
+On Windows, run Alquife in its own classic console window to use F9. The tray
+icon offers Restore and Exit; playback continues while hidden. Windows Terminal
+and consoles shared with a shell or other processes are not supported, to avoid
+hiding other programs. In unsupported environments F9 reports an error.
+For example, select Windows Console Host as the default terminal in Windows
+settings and launch `alquife.exe` directly, rather than from an existing shell.
 
 ### Artists (F1)
 

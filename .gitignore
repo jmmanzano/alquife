@@ -23,4 +23,23 @@ rustc-ice-*.txt
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 .documentacion/**
+.opencode/
+openspec/
 opencode.json
+# Added by code-review-graph
+.code-review-graph/
+.gemini/
+.kiro/
+.codebuddy/
+.claude/
+.qoder/
+.vscode/
+.github/
+.cursorrules
+.mcp.json
+.windsurfrules
+CLAUDE.md
+CODEBUDDY.md
+opencode.jsonc
+QODER.md
+GEMINI.md

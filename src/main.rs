@@ -16,6 +16,8 @@ mod mpris;
 mod subsonic;
 mod ui;
 mod updater;
+#[cfg(windows)]
+mod windows_tray;
 
 use clap::Parser;
 use std::fs::{self, File};

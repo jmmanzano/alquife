@@ -69,6 +69,7 @@ dependencies = [
  "url",
  "urlencoding",
  "vt100",
+ "windows-sys 0.61.2",
  "zbus",
  "zip",
 ]
