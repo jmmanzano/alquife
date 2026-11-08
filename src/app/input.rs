@@ -29,14 +29,6 @@ impl App {
         // Clear notification on any keypress
         state.clear_notification();
 
-        #[cfg(windows)]
-        if key.code == KeyCode::F(9) && key.modifiers == KeyModifiers::NONE {
-            if let Err(message) = crate::windows_tray::hide() {
-                state.notify_error(message);
-            }
-            return Ok(());
-        }
-
         // Keep page switching available even when editing text fields
         if matches!(key.code, KeyCode::F(1..=8)) {
             state.settings_state.confirm_clear_cache = false;

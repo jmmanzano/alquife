@@ -718,10 +718,6 @@ impl App {
         let mut last_queue_persist_check = std::time::Instant::now();
 
         loop {
-            #[cfg(windows)]
-            if crate::windows_tray::quit_requested() {
-                self.state.write().await.should_quit = true;
-            }
             self.update_connection().await;
             self.update_queue_cover().await;
             // Determine tick rate for UI updates
