@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
     Frame,
 };
 
@@ -19,17 +19,28 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         return;
     }
 
+    if state.radio.browser_searching {
+        render_browser_search(frame, area, state);
+        return;
+    }
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Radio Stations ({}) ", state.radio.stations.len()))
+        .title(if state.radio.browser_active {
+            format!(" Radio Browser ({}) [/] filters: {} | {} | {}  [a] add ", state.radio.browser_stations.len(), state.radio.browser_query, state.radio.browser_country, state.radio.browser_genre)
+        } else if state.config.radio_browser_enabled {
+            format!(" Navidrome radio ({}) [Tab] Radio Browser ", state.radio.stations.len())
+        } else { format!(" Radio Stations ({}) ", state.radio.stations.len()) })
         .border_style(Style::default().fg(colors.border_focused));
 
-    if state.radio.stations.is_empty() {
-        let hint = Paragraph::new(
+    if state.radio.visible_stations().is_empty() {
+        let hint = Paragraph::new(if state.radio.browser_active {
+            if state.radio.browser_loading { "Loading Radio Browser..." } else { "No stations found. Press / to search or r to retry." }
+        } else {
             "No internet radio stations found. Configure them in your Subsonic server.\n\n\
             [a] Add new  [r] Refresh\n\
             [j/k] or [↑↓] Navigate  [Enter] Play"
-        )
+        })
             .style(Style::default().fg(colors.muted))
             .block(block);
         frame.render_widget(hint, area);
@@ -41,7 +52,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let items: Vec<ListItem> = state
         .radio
-        .stations
+        .visible_stations()
         .iter()
         .enumerate()
         .map(|(i, station)| {
@@ -104,6 +115,50 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     list_state.select(state.radio.selected);
     frame.render_stateful_widget(list, area, &mut list_state);
     state.radio.scroll_offset = list_state.offset();
+}
+
+fn render_browser_search(frame: &mut Frame, area: Rect, state: &AppState) {
+    let colors = state.settings_state.theme_colors();
+    let width = area.width.min(70);
+    let height = area.height.min(9);
+    let modal = Rect::new(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height);
+    frame.render_widget(Clear, modal);
+    let block = Block::default().borders(Borders::ALL).title(" Radio Browser filters ")
+        .border_style(Style::default().fg(colors.primary));
+    let inner = block.inner(modal);
+    frame.render_widget(block, modal);
+    let labels = ["Name", "Country", "Genre / tag"];
+    let lines: Vec<Line> = labels.iter().enumerate().map(|(i, label)| {
+        let selected = i == state.radio.browser_search_field;
+        Line::styled(format!("{} {}: {}{}", if selected { "▸" } else { " " }, label,
+            state.radio.browser_search_fields[i], if selected { "_" } else { "" }),
+            Style::default().fg(if selected { colors.primary } else { colors.muted }))
+    }).chain(std::iter::once(Line::raw(""))).chain(std::iter::once(Line::raw("Tab/↑↓: field  Enter: search  Esc: cancel"))).collect();
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+#[cfg(test)]
+mod browser_tests {
+    use super::*;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    #[test]
+    fn browser_view_shows_search_without_overwriting_server_stations() {
+        let mut state = AppState::default();
+        state.config.radio_browser_enabled = true;
+        state.radio.browser_active = true;
+        state.radio.browser_query = "jazz".into();
+        state.radio.browser_search_fields[0] = "jazz".into();
+        state.radio.browser_searching = true;
+        let mut terminal = Terminal::new(TestBackend::new(100, 10)).unwrap();
+        terminal.draw(|frame| render(frame, frame.area(), &mut state)).unwrap();
+        let text: String = terminal.backend().buffer().content().iter().map(|cell| cell.symbol()).collect();
+        assert!(text.contains("Radio Browser filters"));
+        assert!(text.contains("jazz_"));
+        assert!(text.contains("Country"));
+        assert!(text.contains("Genre / tag"));
+        assert!(state.radio.stations.is_empty());
+    }
 }
 
 fn render_radio_modal(frame: &mut Frame, area: Rect, state: &AppState) {

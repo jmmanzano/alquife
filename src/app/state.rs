@@ -205,6 +205,16 @@ pub struct PlaylistsState {
 #[derive(Debug, Clone, Default)]
 pub struct RadioState {
     pub stations: Vec<InternetRadioStation>,
+    pub browser_stations: Vec<InternetRadioStation>,
+    pub browser_active: bool,
+    pub browser_searching: bool,
+    pub browser_query: String,
+    pub browser_country: String,
+    pub browser_genre: String,
+    pub browser_search_fields: [String; 3],
+    pub browser_search_field: usize,
+    pub browser_loading: bool,
+    pub browser_generation: u64,
     pub selected: Option<usize>,
     pub scroll_offset: usize,
     
@@ -217,6 +227,12 @@ pub struct RadioState {
     pub radio_name: String,
     pub radio_stream_url: String,
     pub radio_home_page_url: String,
+}
+
+impl RadioState {
+    pub fn visible_stations(&self) -> &[InternetRadioStation] {
+        if self.browser_active { &self.browser_stations } else { &self.stations }
+    }
 }
 
 /// Radio editing mode

@@ -90,7 +90,9 @@ impl<'a> Footer<'a> {
             }
             Page::Radio => {
                 binds.extend([
-                    ("a", "Add"),
+                    ("Tab", "Source"),
+                    ("/", "Browser filters"),
+                    ("a", "Add to server"),
                     ("e", "Edit"),
                     ("d", "Delete"),
                     ("r", "Refresh"),

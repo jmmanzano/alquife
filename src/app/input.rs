@@ -73,7 +73,7 @@ impl App {
         let is_server_text_field =
             state.page == Page::Server && state.server_state.selected_field <= 2;
         let is_filtering = state.page == Page::Artists && state.artists.filter_active;
-        let is_radio_edit_mode = state.page == Page::Radio && state.radio.edit_mode != crate::app::state::RadioEditMode::Browse;
+        let is_radio_edit_mode = state.page == Page::Radio && (state.radio.edit_mode != crate::app::state::RadioEditMode::Browse || state.radio.browser_searching);
 
         if is_server_text_field || is_filtering || is_radio_edit_mode {
             let page = state.page;

@@ -52,6 +52,8 @@ pub struct Config {
     /// Maximum song cache size in GB (0 disables the cache).
     #[serde(rename = "CacheSizeGB", default = "Config::default_cache_size_gb", deserialize_with = "deserialize_cache_size")]
     pub cache_size_gb: u8,
+    #[serde(rename = "RadioBrowserEnabled", default)]
+    pub radio_browser_enabled: bool,
 }
 
 fn deserialize_cache_size<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
@@ -69,7 +71,7 @@ impl Default for Config {
             theme: String::new(), non_stop_mode: false, audio_backend: String::new(),
             equalizer_enabled: false, equalizer_preset: String::new(),
             notifications_enabled: false, audio_output_device: None,
-            auto_update_enabled: false, show_cover_art: true, cache_size_gb: 1,
+            auto_update_enabled: false, show_cover_art: true, cache_size_gb: 1, radio_browser_enabled: false,
         }
     }
 }
@@ -215,6 +217,15 @@ Password = "testpass"
         let serialized = toml::to_string(&config).unwrap();
         let loaded: Config = toml::from_str(&serialized).unwrap();
         assert!(!loaded.show_cover_art);
+    }
+
+    #[test]
+    fn radio_browser_is_opt_in_and_persisted() {
+        let mut config: Config = toml::from_str("").unwrap();
+        assert!(!config.radio_browser_enabled);
+        config.radio_browser_enabled = true;
+        let loaded: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert!(loaded.radio_browser_enabled);
     }
 
     #[test]

@@ -25,7 +25,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.height < 19 {
+    if inner.height < 21 {
         let settings = &state.settings_state;
         let options = [
             ("Theme", settings.theme_name().to_string()),
@@ -37,6 +37,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             ("Album covers", if settings.show_cover_art { "On" } else { "Off" }.to_string()),
             ("Cache size", format!("{} GB", state.config.cache_size_gb)),
             ("Clear cache", if settings.confirm_clear_cache { "Confirm with Enter" } else { "Press Enter" }.to_string()),
+            ("Radio Browser", if state.config.radio_browser_enabled { "On" } else { "Off" }.to_string()),
         ];
         let height = inner.height as usize;
         let start = settings.selected_field.saturating_add(1).saturating_sub(height);
@@ -52,7 +53,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let settings = &state.settings_state;
 
     // Keep all options visible in a standard-height terminal.
-    let gap = if inner.height >= 30 { 1 } else { 0 };
+    let gap = if inner.height >= 33 { 1 } else { 0 };
     // Layout fields vertically with spacing
     let chunks = Layout::vertical([
         Constraint::Length(gap), // Spacing
@@ -73,6 +74,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         Constraint::Length(2), // Cache size
         Constraint::Length(gap), // Spacing
         Constraint::Length(2), // Clear cache
+        Constraint::Length(gap),
+        Constraint::Length(2), // Radio Browser
         Constraint::Min(1),    // Remaining space
     ])
     .split(inner);
@@ -152,6 +155,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         settings.selected_field == 7, &colors);
     render_option(frame, chunks[17], "Clear cache", if settings.confirm_clear_cache { "Confirm with Enter" } else { "Press Enter" },
         settings.selected_field == 8, &colors);
+    render_option(frame, chunks[19], "Radio Browser", if state.config.radio_browser_enabled { "On" } else { "Off" }, settings.selected_field == 9, &colors);
 
     // Help text at bottom
     let help_text = match settings.selected_field {
@@ -164,6 +168,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         6 => "← → or Enter to show or hide album covers (auto-saves)",
         7 => "← → to set cache size (0 disables and clears it; auto-saves)",
         8 => "Enter twice to remove cached songs for all servers and users",
+        9 => "Enable Radio Browser as an additional source in F4",
         _ => "",
     };
     let help = Paragraph::new(help_text).style(Style::default().fg(colors.muted));
@@ -174,7 +179,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         inner.width,
         1,
     );
-    if inner.height >= 21 + 9 * gap {
+    if inner.height >= 23 + 10 * gap {
         frame.render_widget(help, help_area);
     }
 }

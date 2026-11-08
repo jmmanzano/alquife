@@ -5,6 +5,26 @@ use super::*;
 
 impl App {
     pub(super) async fn handle_radio_key(&mut self, key: event::KeyEvent) -> Result<(), Error> {
+        {
+            let mut state = self.state.write().await;
+            if state.radio.browser_searching {
+                match key.code {
+                    KeyCode::Esc => state.radio.browser_searching = false,
+                    KeyCode::Tab | KeyCode::Down => state.radio.browser_search_field = (state.radio.browser_search_field + 1) % 3,
+                    KeyCode::BackTab | KeyCode::Up => state.radio.browser_search_field = (state.radio.browser_search_field + 2) % 3,
+                    KeyCode::Backspace => { let field = state.radio.browser_search_field; state.radio.browser_search_fields[field].pop(); },
+                    KeyCode::Char(c) => { let field = state.radio.browser_search_field; if state.radio.browser_search_fields[field].len() < 200 { state.radio.browser_search_fields[field].push(c); } },
+                    KeyCode::Enter => {
+                        [state.radio.browser_query, state.radio.browser_country, state.radio.browser_genre] = state.radio.browser_search_fields.clone();
+                        state.radio.browser_searching = false;
+                        drop(state);
+                        self.search_radio_browser().await;
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+        }
         let mode = {
             let state = self.state.read().await;
             state.radio.edit_mode
@@ -17,28 +37,42 @@ impl App {
         // Browse mode inputs
         let mut state = self.state.write().await;
         match key.code {
+            KeyCode::Tab if state.config.radio_browser_enabled => {
+                state.radio.browser_active = !state.radio.browser_active;
+                state.radio.selected = (!state.radio.visible_stations().is_empty()).then_some(0);
+                state.radio.scroll_offset = 0;
+                let load = state.radio.browser_active && state.radio.browser_stations.is_empty() && !state.radio.browser_loading;
+                drop(state);
+                if load { self.search_radio_browser().await; }
+                return Ok(());
+            }
+            KeyCode::Char('/') if state.radio.browser_active => {
+                state.radio.browser_search_fields = [state.radio.browser_query.clone(), state.radio.browser_country.clone(), state.radio.browser_genre.clone()];
+                state.radio.browser_search_field = 0;
+                state.radio.browser_searching = true;
+            }
             KeyCode::Up | KeyCode::Char('k') => {
                 if let Some(sel) = state.radio.selected {
                     if sel > 0 {
                         state.radio.selected = Some(sel - 1);
                     }
-                } else if !state.radio.stations.is_empty() {
+                } else if !state.radio.visible_stations().is_empty() {
                     state.radio.selected = Some(0);
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let max = state.radio.stations.len().saturating_sub(1);
+                let max = state.radio.visible_stations().len().saturating_sub(1);
                 if let Some(sel) = state.radio.selected {
                     if sel < max {
                         state.radio.selected = Some(sel + 1);
                     }
-                } else if !state.radio.stations.is_empty() {
+                } else if !state.radio.visible_stations().is_empty() {
                     state.radio.selected = Some(0);
                 }
             }
             KeyCode::Enter => {
                 if let Some(idx) = state.radio.selected {
-                    if let Some(station) = state.radio.stations.get(idx).cloned() {
+                    if let Some(station) = state.radio.visible_stations().get(idx).cloned() {
                         drop(state);
                         return self.play_radio_station(&station).await;
                     }
@@ -53,7 +87,15 @@ impl App {
                 }
                 return Ok(());
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('a') if state.radio.browser_active => {
+                let station = state.radio.selected.and_then(|idx| state.radio.browser_stations.get(idx)).cloned();
+                drop(state);
+                if let Some(station) = station {
+                    self.add_browser_station(&station).await;
+                }
+                return Ok(());
+            }
+            KeyCode::Char('a') if !state.radio.browser_active => {
                 // Add new radio
                 tracing::debug!("Add radio pressed - switching to AddNew mode");
                 state.radio.edit_mode = RadioEditMode::AddNew;
@@ -64,7 +106,7 @@ impl App {
                 state.radio.editing_radio = None;
                 tracing::debug!("Radio edit mode set to AddNew, fields cleared");
             }
-            KeyCode::Char('e') => {
+            KeyCode::Char('e') if !state.radio.browser_active => {
                 // Edit selected radio
                 if let Some(idx) = state.radio.selected {
                     if let Some(station) = state.radio.stations.get(idx).cloned() {
@@ -77,7 +119,7 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char('d') if !state.radio.browser_active => {
                 // Delete selected radio
                 if let Some(idx) = state.radio.selected {
                     if let Some(station) = state.radio.stations.get(idx).cloned() {
@@ -88,13 +130,84 @@ impl App {
             }
             KeyCode::Char('r') => {
                 // Refresh radios list
+                let browser = state.radio.browser_active;
                 drop(state);
+                if browser { self.search_radio_browser().await; return Ok(()); }
                 let _ = self.refresh_radio_stations().await;
                 return Ok(());
             }
             _ => {}
         }
         Ok(())
+    }
+
+    async fn add_browser_station(&self, station: &crate::subsonic::models::InternetRadioStation) {
+        let Some(client) = self.subsonic.as_ref() else {
+            self.state.write().await.notify_error("Configure a Subsonic server before adding a station");
+            return;
+        };
+        let result = client.create_internet_radio_station(
+            &station.name, &station.stream_url, station.home_page_url.as_deref(),
+        ).await;
+        if let Err(error) = result {
+            self.state.write().await.notify_error(format!("Could not add station to server: {error}"));
+            return;
+        }
+
+        // A failed refresh must not be reported as a failed creation: retrying could
+        // otherwise create duplicates on the server.
+        let refreshed = client.get_internet_radio_stations().await;
+        let mut state = self.state.write().await;
+        match refreshed {
+            Ok(stations) => {
+                state.radio.stations = stations;
+                state.notify(format!("Added '{}' to server radios", station.name));
+            }
+            Err(error) => {
+                tracing::warn!("Station added but server radio refresh failed: {error}");
+                state.notify_error("Station added, but server list could not be refreshed; press r on the server source");
+            }
+        }
+    }
+
+    async fn search_radio_browser(&self) {
+        let mut state = self.state.write().await;
+        if !state.config.radio_browser_enabled { return; }
+        state.radio.browser_generation = state.radio.browser_generation.wrapping_add(1);
+        let generation = state.radio.browser_generation;
+        let query = state.radio.browser_query.trim().to_string();
+        let country = state.radio.browser_country.trim().to_string();
+        let genre = state.radio.browser_genre.trim().to_string();
+        state.radio.browser_loading = true;
+        let shared = self.state.clone();
+        drop(state);
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || -> Result<Vec<crate::subsonic::models::InternetRadioStation>, String> {
+                let api = radiobrowser::blocking::RadioBrowserAPI::new().map_err(|e| e.to_string())?;
+                let mut search = api.get_stations().limit("100").hidebroken(true)
+                    .order(radiobrowser::StationOrder::Clickcount).reverse(true);
+                if !query.is_empty() { search = search.name(&query); }
+                if !country.is_empty() { search = search.country(&country); }
+                if !genre.is_empty() { search = search.tag(&genre); }
+                let stations = search.send().map_err(|e| e.to_string())?;
+                Ok(stations.into_iter().filter_map(|s| {
+                    let stream_url = if s.url_resolved.is_empty() { s.url } else { s.url_resolved };
+                    if !(stream_url.starts_with("http://") || stream_url.starts_with("https://")) { return None; }
+                    Some(crate::subsonic::models::InternetRadioStation { id: s.stationuuid, name: s.name, stream_url, home_page_url: (!s.homepage.is_empty()).then_some(s.homepage) })
+                }).collect())
+            }).await;
+            let mut state = shared.write().await;
+            if state.radio.browser_generation != generation || !state.config.radio_browser_enabled { return; }
+            state.radio.browser_loading = false;
+            match result {
+                Ok(Ok(stations)) => {
+                    state.radio.browser_stations = stations;
+                    if state.radio.browser_active { state.radio.selected = (!state.radio.browser_stations.is_empty()).then_some(0); state.radio.scroll_offset = 0; }
+                }
+                Ok(Err(error)) => state.notify_error(format!("Radio Browser: {error}")),
+                Err(error) => state.notify_error(format!("Radio Browser task: {error}")),
+            }
+        });
     }
 
     async fn handle_radio_edit_key(&mut self, key: event::KeyEvent) -> Result<(), Error> {

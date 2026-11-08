@@ -25,7 +25,7 @@ impl App {
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
                     state.settings_state.confirm_clear_cache = false;
-                    if field < 8 {
+                    if field < 9 {
                         state.settings_state.selected_field = field + 1;
                     }
                 }
@@ -83,6 +83,11 @@ impl App {
                         state.config.cache_size_gb = state.config.cache_size_gb.saturating_sub(1);
                         let size = state.config.cache_size_gb;
                         state.notify(format!("Cache size: {} GB", size));
+                        config_changed = true;
+                    }
+                    9 => {
+                        state.config.radio_browser_enabled = !state.config.radio_browser_enabled;
+                        if !state.config.radio_browser_enabled { state.radio.browser_active = false; state.radio.browser_searching = false; state.radio.browser_generation += 1; state.radio.browser_loading = false; state.radio.selected = (!state.radio.stations.is_empty()).then_some(0); }
                         config_changed = true;
                     }
                     _ => {}
@@ -152,6 +157,11 @@ impl App {
                                 state.settings_state.confirm_clear_cache = true;
                                 state.notify("Press Enter again to clear all cached songs");
                             }
+                        }
+                        9 => {
+                            state.config.radio_browser_enabled = !state.config.radio_browser_enabled;
+                            if !state.config.radio_browser_enabled { state.radio.browser_active = false; state.radio.browser_searching = false; state.radio.browser_generation += 1; state.radio.browser_loading = false; state.radio.selected = (!state.radio.stations.is_empty()).then_some(0); }
+                            config_changed = true;
                         }
                         _ => {}
                     }
