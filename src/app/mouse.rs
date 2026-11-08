@@ -161,16 +161,17 @@ impl App {
     /// Handle click on radio page
     async fn handle_radio_click(&mut self, y: u16, layout: &LayoutAreas) -> Result<(), Error> {
         let mut state = self.state.write().await;
+        if state.radio.browser_searching { return Ok(()); }
         let content = layout.content;
         let row_in_viewport = y.saturating_sub(content.y + 1) as usize;
         let item_index = state.radio.scroll_offset + row_in_viewport;
-        if item_index < state.radio.stations.len() {
+        if item_index < state.radio.visible_stations().len() {
             let was_selected = state.radio.selected == Some(item_index);
             state.radio.selected = Some(item_index);
             let is_second_click = was_selected
                 && self.last_click.is_some_and(|(_, ly, t)| ly == y && t.elapsed().as_millis() < 500);
             if is_second_click {
-                if let Some(station) = state.radio.stations.get(item_index).cloned() {
+                if let Some(station) = state.radio.visible_stations().get(item_index).cloned() {
                     drop(state);
                     self.last_click = Some((0, y, std::time::Instant::now()));
                     return self.play_radio_station(&station).await;
@@ -258,7 +259,7 @@ impl App {
                     if sel > 0 {
                         state.radio.selected = Some(sel - 1);
                     }
-                } else if !state.radio.stations.is_empty() {
+                } else if !state.radio.visible_stations().is_empty() {
                     state.radio.selected = Some(0);
                 }
             }
@@ -330,12 +331,12 @@ impl App {
                 }
             }
             Page::Radio => {
-                let max = state.radio.stations.len().saturating_sub(1);
+                let max = state.radio.visible_stations().len().saturating_sub(1);
                 if let Some(sel) = state.radio.selected {
                     if sel < max {
                         state.radio.selected = Some(sel + 1);
                     }
-                } else if !state.radio.stations.is_empty() {
+                } else if !state.radio.visible_stations().is_empty() {
                     state.radio.selected = Some(0);
                 }
             }

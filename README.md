@@ -165,9 +165,18 @@ The left pane contains the queue; the right pane shows the currently playing alb
 
 ### Radio (F4)
 
+Radio Browser is an optional, independent source alongside the stations configured on your Subsonic/Navidrome server. Enable **F6 → Radio Browser** (off by default), then press `Tab` in F4 to switch sources. Radio Browser initially shows up to 100 popular working stations. Press `/` to open the search form: enter any combination of station name, country name and genre/tag, use `Tab` or `↑/↓` to change fields, and press `Enter` to search or `Esc` to cancel. Empty fields are ignored; clear all three to restore the popular list. Country and genre values depend on Radio Browser's data (for example `Spain` and `rock`). Press `r` to retry or refresh. Select a result and press `Enter` (or double-click) to play. Radio Browser requires internet access, but does not require a connection to your Subsonic server. Station availability depends on external streams. Add, edit and delete apply only to the server's stations.
+
+To save a Radio Browser result to your Subsonic/Navidrome server, select it and press `a`. Its name, stream URL and homepage are sent to the server; switch sources with `Tab` to find it in the server's radio list. Saving requires a configured, reachable server and permission to create stations. Errors are shown in the footer.
+
+The setting is persisted as `RadioBrowserEnabled` in the configuration file.
+
 | Key | Action |
 |---|---|
 | `↑/↓` | Navigate stations |
+| `Tab` | Switch radio source (when Radio Browser is enabled) |
+| `/` | Search Radio Browser by name, country and/or genre |
+| `a` | Add a new server station, or save the selected Radio Browser result to the server |
 | `Enter` | Play |
 | `s` | Stop |
 
