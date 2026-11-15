@@ -88,6 +88,7 @@ libc = "0.2.183"
 tempfile = "3.27.0"
 
 [package.metadata.deb]
+depends = "$auto, ffmpeg"
 assets = [
     ["target/release/alquife", "usr/bin/alquife", "755"],
     ["packaging/debian/alquife.desktop", "usr/share/applications/alquife.desktop", "644"],
