@@ -24,3 +24,5 @@ rustc-ice-*.txt
 #.idea/
 .documentacion/**
 opencode.json
+packaging/RELEASING.md
+packaging/GUIA-PUBLICACION-WINDOWS.md

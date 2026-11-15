@@ -41,6 +41,17 @@ curl -sSf https://raw.githubusercontent.com/jmmanzano/alquife/master/install.sh 
 
 ### Windows
 
+Once the package has been accepted into the WinGet community repository:
+
+```powershell
+winget install --id jmmanzano.Alquife --exact
+winget install --id Gyan.FFmpeg --exact
+```
+
+WinGet installs the portable command-line executable, not the shortcuts or FFmpeg
+installed by `install.bat`. Restart the terminal if the commands are not found.
+Until the WinGet submission is accepted, use the manual installation:
+
 1. Download `alquife-windows-x86_64.zip` from [Releases](https://github.com/jmmanzano/alquife/releases)
 2. Extract the zip
 3. Run `install.bat` (downloads and installs FFmpeg if needed)
@@ -50,6 +61,24 @@ curl -sSf https://raw.githubusercontent.com/jmmanzano/alquife/master/install.sh 
 
 - **Binary**: `alquife-linux-x86_64`
 - **Debian package**: `.deb` with desktop integration
+- **APT repository**: after the repository has been configured and published,
+  install on amd64 Debian/Ubuntu systems with:
+
+```bash
+curl -fsSL https://jmmanzano.github.io/alquife-apt/key.gpg | sudo tee /usr/share/keyrings/alquife-archive-keyring.gpg >/dev/null
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/alquife-archive-keyring.gpg] https://jmmanzano.github.io/alquife-apt stable main" | sudo tee /etc/apt/sources.list.d/alquife.list
+sudo apt update
+sudo apt install alquife
+```
+
+Verify the key fingerprint against the maintainer's independently published
+fingerprint before trusting it. Updates are installed with `sudo apt update &&
+sudo apt upgrade`. Packages are built on Ubuntu 22.04; older systems or other
+distributions may not satisfy their runtime library requirements.
+
+See [packaging documentation](packaging/RELEASING.md) for repository setup and
+WinGet submission. When using a package manager, disable Alquife's built-in
+automatic updater in Settings and use the package manager to update instead.
 
 ### Build from Source
 
@@ -201,7 +230,7 @@ Alquife works with any Subsonic-compatible server:
 
 ## License
 
-Alquife is released under the GPL-3.0 License.
+Alquife is released under the MIT License.
 
 ## Contributing
 
